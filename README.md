@@ -13,7 +13,7 @@
 ### 🚀 核心功能
 
 *   **块级粒度管理**：打破文件限制，以“块”为基本单位进行追踪、索引与引用。
-*   **Tana 风格 Supertag**：支持结构化标签。当检测到 `SuperTagViewUuid` 等字段时，自动开启强大的 Supertag 视图。
+*   **Tana 风格 Supertag**：支持结构化标签。
 *   **高性能 SQLite 驱动**：本地高性能数据库存储，确保在大规模笔记库下依然拥有极速的检索体验。
 *   **智能实时同步**：自动监听文件修改、重命名及删除事件，利用内容哈希（Content Hashing）实现毫秒级的增量更新。
 *   **透明的数据结构**：通过标准的 `files`, `blocks`, `tags` 关系表管理数据，方便二次开发与深度查询。
@@ -43,7 +43,7 @@ Fuxi is a block management and intelligence indexing system designed specificall
 ### 🚀 Key Features
 
 *   **Block-Level Management**: Break free from file boundaries. Track, index, and reference content at the "block" level.
-*   **Tana-style Supertag**: Powerful structured tagging. Automatically activates the Supertag view when fields like `SuperTagViewUuid` are detected.
+*   **Tana-style Supertag**: Powerful structured tagging.
 *   **SQLite Powered**: High-performance local database ensures blazing-fast retrieval even in massive note collections.
 *   **Smart Real-time Sync**: Automatically listens for file modifications, renames, and deletions, utilizing Content Hashing for millisecond-speed incremental updates.
 *   **Transparent Data Schema**: Data is managed via standard relational tables (`files`, `blocks`, `tags`), making it extensible and easy to query.
@@ -62,27 +62,16 @@ Fuxi maintains a real-time mapping of your data in `fuxi.db` located in the plug
 2.  The plugin will automatically start scanning and indexing your vault.
 3.  Use tags or specific metadata within a block to trigger advanced view features.
 
-### 💬 交流与反馈 (Community)
+### 💬 交流与赞赏 | Community & Support
 
-欢迎加入微信群进行交流与反馈。
-
-Welcome to join our WeChat group for discussion and feedback.
-
-<p align="center">
-  <img src="微信群.jpg" alt="微信群" width="300" />
-</p>
-
-### ☕ 支持与赞赏 (Support)
-
-如果您觉得这个插件对您有帮助，欢迎赞赏支持！您的支持是我持续更新的动力。
-
-If you find this plugin helpful, please consider supporting its development. Your support is greatly appreciated!
-
-<p align="center">
-  <img src="赞赏码.jpg" alt="赞赏码" width="300" />
-</p>
+| 微信群 (WeChat Group) | 赞赏码 (Reward Code) |
+| :---: | :---: |
+| <img src="微信群.jpg" width="280" /> | <img src="赞赏码.jpg" width="280" /> |
+| 欢迎进入微信群交流反馈 | 您的支持是我持续更新的动力 |
+| Join our group for feedback | Your support is greatly appreciated |
 
 ---
 
-**Author**: Heiye
-**Version**: 1.0.0
+**作者 (Author)**: Heiye  
+**版本 (Version)**: 1.0.0
+
