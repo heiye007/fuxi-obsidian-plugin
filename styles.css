@@ -1,0 +1,837 @@
+/* ========== Supertag 药丸（行内） ========== */
+.supertag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  padding: 0px 7px;
+  border-radius: 6px;
+  font-size: 0.82em;
+  font-weight: 600;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.65;
+  letter-spacing: 0.01em;
+  vertical-align: middle;
+  white-space: nowrap;
+  margin-left: 4px;
+  text-decoration: none !important;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.supertag-pill-hash {
+  opacity: 0.4;
+  font-size: 0.82em;
+  font-weight: 400;
+  margin-right: 1px;
+}
+
+/* 可点击的药丸 */
+.supertag-pill-clickable {
+  cursor: pointer !important;
+}
+
+.supertag-pill-clickable:hover {
+  filter: brightness(1.05) saturate(1.3);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.13);
+}
+
+.supertag-pill-clickable:active {
+  transform: scale(0.96);
+  box-shadow: none;
+}
+
+/* 药丸内的下拉箭头 */
+.supertag-pill-toggle {
+  margin-left: 6px;
+  font-size: 10px;
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
+}
+
+.supertag-pill:hover .supertag-pill-toggle {
+  opacity: 0.9;
+}
+
+/* ========== Supertag 属性预览模态框 ========== */
+.supertag-props-modal {
+  width: 400px;
+}
+
+.supertag-props-header {
+  margin-bottom: 24px;
+  display: flex;
+  justify-content: center;
+}
+
+.supertag-props-body {
+  margin-bottom: 20px;
+}
+
+.supertag-props-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  overflow: hidden;
+  background: var(--background-primary);
+}
+
+.supertag-prop-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  transition: background 0.1s ease;
+  border-bottom: 1px solid var(--background-modifier-border-focus);
+}
+
+.supertag-prop-row:last-child {
+  border-bottom: none;
+}
+
+.supertag-prop-row:hover {
+  background: var(--background-secondary);
+}
+
+.supertag-prop-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  border-radius: 4px;
+  background: var(--background-secondary);
+}
+
+.supertag-prop-name {
+  font-weight: 500;
+  color: var(--text-muted);
+  width: 80px;
+  flex-shrink: 0;
+}
+
+.supertag-prop-value {
+  flex: 1;
+  color: var(--text-normal);
+  text-align: right;
+  font-family: var(--font-monospace);
+  font-size: 13px;
+}
+
+.supertag-props-empty {
+  padding: 30px 0;
+  text-align: center;
+  color: var(--text-faint);
+  font-style: italic;
+  font-size: 14px;
+}
+
+.supertag-props-footer {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  padding-top: 16px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+/* 大号药丸（编辑器头部） */
+.supertag-pill-lg {
+  padding: 3px 14px;
+  font-size: 15px;
+  border-radius: 8px;
+}
+
+/* ========== Supertag 编辑模态框 ========== */
+.supertag-editor-modal {
+  max-width: 560px;
+}
+
+.supertag-editor-header {
+  margin-bottom: 20px;
+}
+
+.supertag-editor-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.supertag-editor-new-badge {
+  font-size: 12px;
+  color: var(--text-accent);
+  font-weight: 500;
+  background: rgba(var(--interactive-accent-rgb, 99, 135, 241), 0.1);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.supertag-editor-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.supertag-editor-props {
+  margin-bottom: 20px;
+}
+
+.supertag-editor-props h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.supertag-editor-empty {
+  font-size: 13px;
+  color: var(--text-faint);
+  font-style: italic;
+  padding: 12px 0;
+}
+
+.supertag-editor-props-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.supertag-editor-prop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--background-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  transition: border-color 0.1s ease;
+}
+
+.supertag-editor-prop-row:hover {
+  border-color: var(--text-faint);
+}
+
+.supertag-editor-prop-num {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-faint);
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.supertag-editor-prop-input {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 13px;
+  outline: none;
+}
+
+.supertag-editor-prop-input:focus {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb, 99, 135, 241), 0.15);
+}
+
+.supertag-editor-prop-select {
+  width: 130px;
+  padding: 4px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.supertag-editor-prop-del {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.supertag-editor-prop-del:hover {
+  background: rgba(255, 71, 87, 0.12);
+  color: #ff4757;
+}
+
+.supertag-editor-add-btn {
+  width: 100%;
+  padding: 8px 12px;
+  border: 2px dashed var(--background-modifier-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.supertag-editor-add-btn:hover {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+}
+
+.supertag-editor-btn-bar {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 16px;
+  border-top: 1px solid var(--background-modifier-border);
+  margin-top: 8px;
+}
+
+.supertag-editor-btn-bar button {
+  padding: 6px 20px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* 药丸名称可点击区域 */
+.supertag-pill-name {
+  cursor: pointer;
+}
+
+/* ========== Supertag 属性值模态框 ========== */
+.supertag-values-modal {
+  max-width: 480px;
+}
+
+.supertag-values-header {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.supertag-values-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 8px 0 0;
+}
+
+.supertag-values-empty {
+  padding: 24px 0;
+  text-align: center;
+  color: var(--text-faint);
+  font-style: italic;
+  font-size: 14px;
+}
+
+.supertag-values-form {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  overflow: hidden;
+  background: var(--background-primary);
+  margin-bottom: 20px;
+}
+
+.supertag-values-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--background-modifier-border-focus);
+  transition: background 0.1s ease;
+}
+
+.supertag-values-row:last-child {
+  border-bottom: none;
+}
+
+.supertag-values-row:hover {
+  background: var(--background-secondary);
+}
+
+.supertag-values-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  border-radius: 4px;
+  background: var(--background-secondary);
+}
+
+.supertag-values-label {
+  width: 80px;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.supertag-values-input {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 13px;
+  outline: none;
+}
+
+.supertag-values-input:focus {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb, 99, 135, 241), 0.15);
+}
+
+.supertag-values-input[type="checkbox"] {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.supertag-values-footer {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  padding-top: 16px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.supertag-values-footer button {
+  padding: 6px 20px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ========== Supertag 查询面板 ========== */
+
+.supertag-query-panel {
+  flex-shrink: 0;
+  background: var(--background-primary);
+  font-family: var(--font-interface);
+  z-index: 5;
+  border-top: 1px solid var(--background-modifier-border);
+  position: relative;
+  margin: 0 !important;
+  clear: both;
+}
+
+/* 适配手机端：防止被底部工具栏挡住 */
+.is-mobile .supertag-query-panel {
+  padding-bottom: 100px;
+  /* 为移动端工具栏留出足够空间 */
+}
+
+/* 针对编辑器 (CM6) 的特殊修复 */
+.cm-sizer.has-supertag-query {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* 彻底消除任何层级下的底部补白，解决“滚动超过末尾”导致的空白 */
+.cm-sizer.has-supertag-query .cm-content,
+.cm-sizer.has-supertag-query .cm-contentContainer,
+.cm-sizer.has-supertag-query .cm-scroller {
+  padding-bottom: 20px !important;
+  margin-bottom: 0 !important;
+}
+
+.cm-sizer.has-supertag-query .supertag-query-panel {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+  width: 100% !important;
+}
+
+.supertag-qp-header {
+  line-height: normal;
+  /* 防止继承编辑器的大行高 */
+}
+
+/* 可拖动分割线 */
+.supertag-qp-resize-handle {
+  height: 6px;
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background-secondary);
+  transition: background 0.15s ease;
+}
+
+.supertag-qp-resize-handle:hover {
+  background: var(--interactive-accent);
+}
+
+.supertag-qp-resize-bar {
+  width: 40px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--text-faint);
+  opacity: 0.4;
+  transition: opacity 0.15s ease;
+}
+
+.supertag-qp-resize-handle:hover .supertag-qp-resize-bar {
+  opacity: 0;
+}
+
+.supertag-qp-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  user-select: none;
+  background: var(--background-secondary);
+  transition: background 0.15s ease;
+}
+
+.supertag-qp-header:hover {
+  background: var(--background-secondary-alt);
+}
+
+.supertag-qp-arrow {
+  font-size: 12px;
+  color: var(--text-muted);
+  width: 14px;
+  text-align: center;
+  transition: transform 0.2s ease;
+}
+
+.supertag-qp-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.supertag-qp-content {
+  padding: 12px 16px;
+  height: 250px;
+  overflow-y: auto;
+  overflow-x: auto;
+  /* 支持横向滚动，防止表格列多时在手机上被截断 */
+}
+
+/* ========== Search Node 构建器 (Tana 风格) ========== */
+
+.supertag-qp-builder {
+  padding: 8px 0 16px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  margin-bottom: 12px;
+}
+
+.supertag-qp-query-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.supertag-qp-placeholder {
+  color: var(--text-faint);
+  font-style: italic;
+  font-size: 0.9em;
+}
+
+/* 查询药丸 */
+.supertag-qp-pill {
+  display: flex;
+  align-items: center;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.85em;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.supertag-qp-pill:hover {
+  border-color: var(--interactive-accent);
+}
+
+.supertag-qp-pill-label {
+  color: var(--text-muted);
+  font-weight: 500;
+  border-right: 1px solid var(--background-modifier-border);
+  padding-right: 6px;
+}
+
+.supertag-qp-pill-value {
+  color: var(--text-accent);
+  font-weight: 600;
+}
+
+.supertag-qp-pill-close {
+  cursor: pointer;
+  color: var(--text-faint);
+  margin-left: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+}
+
+.supertag-qp-pill-close:hover {
+  background: var(--background-modifier-error);
+  color: white;
+}
+
+/* 添加过滤器按钮 */
+.supertag-qp-add-filter {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--text-faint);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-faint);
+  transition: all 0.2s ease;
+}
+
+.supertag-qp-add-filter:hover {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+  background: var(--background-secondary-alt);
+}
+
+/* 过滤菜单 (Dropdown) */
+.supertag-qp-menu {
+  position: fixed;
+  z-index: 1000;
+  background: var(--background-secondary);
+  /* 更加高级的深色背景 */
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-l);
+  min-width: 280px;
+  padding: 0;
+  max-height: 400px;
+  overflow-y: auto;
+  color: var(--text-normal);
+}
+
+.supertag-qp-menu-header {
+  padding: 12px 16px;
+  font-size: 0.9em;
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary-alt);
+}
+
+.supertag-qp-menu-title {
+  padding: 8px 12px 4px 12px;
+  font-size: 0.75em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.supertag-qp-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  cursor: pointer;
+  font-size: 0.95em;
+  color: var(--text-normal);
+  transition: all 0.1s ease;
+  border-bottom: 1px solid var(--background-modifier-border-allow);
+}
+
+.supertag-qp-menu-item:last-child {
+  border-bottom: none;
+}
+
+.supertag-qp-menu-item:hover {
+  background: var(--interactive-accent);
+  /* 经典 Tana 蓝 */
+  color: var(--text-on-accent);
+}
+
+.supertag-qp-menu-item-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.supertag-qp-menu-arrow {
+  font-size: 0.85em;
+  opacity: 0.5;
+}
+
+.supertag-qp-menu-item:hover .supertag-qp-menu-arrow {
+  opacity: 1;
+}
+
+.supertag-qp-menu-icon {
+  font-size: 1.1em;
+  width: 20px;
+  text-align: center;
+}
+
+.supertag-qp-menu-input {
+  width: calc(100% - 16px);
+  margin: 8px;
+  padding: 6px 8px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-normal);
+  font-size: 0.9em;
+  outline: none;
+}
+
+.supertag-qp-menu-input:focus {
+  border-color: var(--interactive-accent);
+}
+
+.supertag-qp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.supertag-qp-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.95em;
+  line-height: 1.5;
+}
+
+.supertag-qp-list-bullet {
+  color: var(--text-faint);
+  font-size: 1.2em;
+  line-height: 1;
+  padding-top: 2px;
+}
+
+.supertag-qp-list-content {
+  color: var(--text-normal);
+  flex: 1;
+}
+
+.supertag-qp-list-file {
+  font-size: 0.8em;
+  color: var(--text-faint);
+  cursor: pointer;
+  white-space: nowrap;
+  margin-left: 4px;
+}
+
+.supertag-qp-list-file:hover {
+  color: var(--text-accent);
+  text-decoration: underline;
+}
+
+/* 隐藏旧的 toolbar 相关样式 */
+.supertag-qp-toolbar,
+.supertag-qp-count {
+  display: none;
+}
+
+.supertag-qp-empty {
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 13px;
+  font-style: italic;
+  padding: 16px 0;
+  margin: 0;
+}
+
+/* 查询结果表格 */
+.supertag-qp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.supertag-qp-table thead th {
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 2px solid var(--background-modifier-border);
+  white-space: nowrap;
+}
+
+.supertag-qp-table tbody td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--background-modifier-border-focus);
+  color: var(--text-normal);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.supertag-qp-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.supertag-qp-table tbody tr:hover td {
+  background: var(--background-secondary);
+}
+
+.supertag-qp-file-link {
+  color: var(--text-accent);
+  text-decoration: none;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.supertag-qp-file-link:hover {
+  text-decoration: underline;
+}
+
+.supertag-qp-line {
+  color: var(--text-faint);
+  font-family: var(--font-monospace);
+  font-size: 12px;
+  text-align: center;
+}
+
+.supertag-qp-empty-cell {
+  color: var(--text-faint);
+  font-style: italic;
+}
