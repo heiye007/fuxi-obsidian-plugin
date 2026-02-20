@@ -1,9 +1,0 @@
-{
-  "id": "Fuxi",
-  "name": "伏羲",
-  "version": "1.0.0",
-  "minAppVersion": "0.15.0",
-  "description": "伏羲：连接万物的智慧索引，在 Obsidian 中实现 Roamresearch 的 Block 与Tana 的 Supertag。",
-  "author": "Heiye",
-  "isDesktopOnly": false
-}

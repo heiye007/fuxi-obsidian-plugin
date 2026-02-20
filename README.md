@@ -1,1 +1,0 @@
-# fuxi-obsidian-plugin
