@@ -62,6 +62,26 @@ Fuxi maintains a real-time mapping of your data in `fuxi.db` located in the plug
 2.  The plugin will automatically start scanning and indexing your vault.
 3.  Use tags or specific metadata within a block to trigger advanced view features.
 
+### 💬 交流与反馈 (Community)
+
+欢迎加入微信群进行交流与反馈。
+
+Welcome to join our WeChat group for discussion and feedback.
+
+<p align="center">
+  <img src="微信群.jpg" alt="微信群" width="300" />
+</p>
+
+### ☕ 支持与赞赏 (Support)
+
+如果您觉得这个插件对您有帮助，欢迎赞赏支持！您的支持是我持续更新的动力。
+
+If you find this plugin helpful, please consider supporting its development. Your support is greatly appreciated!
+
+<p align="center">
+  <img src="赞赏码.jpg" alt="赞赏码" width="300" />
+</p>
+
 ---
 
 **Author**: Heiye
