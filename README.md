@@ -73,5 +73,5 @@ Fuxi maintains a real-time mapping of your data in `fuxi.db` located in the plug
 ---
 
 **作者 (Author)**: Heiye  
-**版本 (Version)**: 1.0.0
+**版本 (Version)**: 0.1
 
