@@ -1112,8 +1112,8 @@
   height: 24px;
 }
 
-/* 列表样式 */
-.sudoku-item.list-style {
+/* 网格样式 */
+.sudoku-item.grid-style {
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 16px;
@@ -1125,11 +1125,22 @@
   position: relative;
 }
 
-.sudoku-item.grid-style:hover {
+.sudoku-item:hover .sudoku-item-preview {
+  transform: translateY(-8px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
   border-color: var(--interactive-accent);
-  transform: translateY(-4px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
+}
+
+.sudoku-item:hover {
   background: var(--background-secondary-alt);
+}
+
+/* 置顶项的特殊样式 */
+.sudoku-item.is-pinned {
+  border-color: #f1c40f !important;
+  border-width: 1.5px !important;
+  background: rgba(241, 196, 15, 0.05) !important;
+  box-shadow: 0 4px 15px rgba(241, 196, 15, 0.1);
 }
 
 .sudoku-item-preview {
@@ -1141,7 +1152,10 @@
   background: var(--background-modifier-border);
   padding: 4px;
   border-radius: 10px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  z-index: 2;
 }
 
 .sudoku-preview-cell {
@@ -1202,6 +1216,16 @@
   color: var(--text-faint);
   display: flex;
   justify-content: space-between;
+  margin-top: 2px;
+}
+
+.sudoku-item-date {
+  opacity: 0.6;
+}
+
+pocket-watch:before {
+  content: "📅 ";
+  font-size: 0.9em;
 }
 
 .sudoku-item.grid-style .sudoku-item-actions {
@@ -1320,6 +1344,119 @@
   transform: translateX(0);
 }
 
+/* 置顶星星样式 (网格视图: 悬浮按钮式徽章) */
+.sudoku-item.grid-style .sudoku-item-pin {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 5;
+  color: var(--text-faint);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  border-radius: 50%;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0;
+  transform: scale(0.9);
+}
+
+.sudoku-item.grid-style:hover .sudoku-item-pin,
+.sudoku-item.grid-style .sudoku-item-pin.is-active {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.sudoku-item.grid-style .sudoku-item-pin:hover {
+  background: var(--background-secondary-alt);
+  color: var(--text-normal);
+  transform: scale(1.05);
+}
+
+.sudoku-item.grid-style .sudoku-item-pin.is-active {
+  color: #f1c40f !important;
+  border-color: rgba(241, 196, 15, 0.3);
+  background: rgba(241, 196, 15, 0.05);
+}
+
+.sudoku-item.grid-style .sudoku-item-pin.is-active svg {
+  fill: #f1c40f !important;
+  stroke: #f1c40f !important;
+}
+
+.sudoku-item.grid-style .sudoku-item-pin svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.5px;
+}
+
+/* 置顶星星样式 (列表视图: 行内元素) */
+.sudoku-item.list-style .sudoku-item-pin {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: static;
+  opacity: 0.3;
+  margin-right: -10px;
+  order: -1;
+  color: var(--text-faint);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 50%;
+}
+
+.sudoku-item.list-style:hover .sudoku-item-pin {
+  opacity: 0.6;
+}
+
+.sudoku-item.list-style .sudoku-item-pin:hover {
+  background: rgba(var(--interactive-accent-rgb), 0.1);
+  color: var(--text-accent);
+  opacity: 1;
+}
+
+.sudoku-item.list-style .sudoku-item-pin.is-active {
+  opacity: 1;
+  color: #f1c40f !important;
+}
+
+.sudoku-item.list-style .sudoku-item-pin.is-active svg {
+  fill: #f1c40f !important;
+  stroke: #f1c40f !important;
+}
+
+.sudoku-item.list-style .sudoku-item-pin svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.5px;
+}
+
+/* 加载动画 */
+@keyframes sudoku-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sudoku-loading-spinner {
+  animation: sudoku-spin 1.5s linear infinite;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-accent);
+}
+
 /* 空状态 */
 .sudoku-empty-container {
   display: flex;
@@ -1374,22 +1511,28 @@
   display: flex;
   height: 100%;
   background: var(--background-primary);
+  overflow: hidden;
+  position: relative;
 }
 
 /* 侧边栏导航 */
 .sudoku-viewer-sidebar {
-  flex: 0 0 340px;
-  padding: 20px 16px;
+  padding: 16px 12px !important;
+  /* 缩小边距，为窄屏腾出空间 */
   background: var(--background-secondary-alt);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  /* 居中显示纯净的九宫格 */
-  box-shadow: inset -10px 0 20px -15px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  /* 改为从顶部开始对齐，防止被裁切 */
+  box-shadow: inset -1px 0 0 var(--background-modifier-border);
+  overflow-y: auto;
+  /* 允许纵向滚动防止垂直裁切 */
+  overflow-x: hidden;
   height: 100%;
-  border-right: none;
+  min-width: 0;
+  /* flex 缩小关键 */
+  box-sizing: border-box !important;
 }
 
 .sudoku-sidebar-title-info {
@@ -1426,19 +1569,21 @@
 
 /* 分割线 (Resizer) */
 .sudoku-viewer-resizer {
-  width: 4px;
+  width: 8px;
+  /* 加宽热区 */
+  margin-left: -4px;
   cursor: col-resize;
   background: transparent;
   transition: background 0.2s ease;
   position: relative;
-  z-index: 15;
+  z-index: 50;
   flex-shrink: 0;
 }
 
 .sudoku-viewer-resizer::after {
   content: '';
   position: absolute;
-  left: 2px;
+  left: 4px;
   top: 0;
   bottom: 0;
   width: 1px;
@@ -1450,28 +1595,54 @@
   background: var(--interactive-accent);
 }
 
-.sudoku-viewer-resizer:hover::after,
-.sudoku-viewer-resizer.is-dragging::after {
-  background: transparent;
+/* 拖拽中的全局锁定状态 */
+body.sudoku-is-resizing,
+body.sudoku-is-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+body.sudoku-is-resizing .sudoku-viewer-main {
+  pointer-events: none;
+  /* 防止拖动时由于进入编辑区域导致焦点丢失 */
+}
+
+.sudoku-viewer-grid-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  perspective: 1000px;
+  min-height: 200px;
 }
 
 .sudoku-viewer-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
-  gap: 3%;
-  width: 95%;
-  /* 占用侧边栏 95% 的宽度 */
-  max-width: none !important;
-  /* 解除宽度限制，随拖动无限缩放 */
+  gap: 6px;
+  /* 间距改为固定像素，防止缩小时塌陷 */
+  width: 100%;
+  max-width: 100%;
+  /* 防止溢出侧边栏 */
+  /* 保护九宫格不要大到失控 */
   aspect-ratio: 1 / 1;
-  padding: 10px;
-  background: var(--background-primary);
+  padding: 8px;
+  background: var(--background-primary-alt);
   border-radius: 12px;
   border: 1px solid var(--background-modifier-border);
   box-shadow: var(--shadow-s);
-  box-sizing: border-box;
+  box-sizing: border-box !important;
   flex-shrink: 0;
+  margin: 16px 0;
+  min-width: 0;
+  /* 增加上下间距 */
+  /* 在侧边栏纵向居中 */
+}
+
+.sudoku-viewer-grid:hover {
+  border-color: var(--interactive-accent);
 }
 
 .sudoku-viewer-cell {
@@ -1485,6 +1656,10 @@
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
+  aspect-ratio: 1 / 1;
+  /* 强制格子永远是正方形 */
+  min-width: 0;
+  /* 允许在窄屏下无限缩小 */
 }
 
 .sudoku-viewer-cell:hover {
@@ -1519,13 +1694,26 @@
 }
 
 .cell-dot-preview {
-  font-size: 15px;
+  font-size: 13px;
+  /* 稍微调小默认字号 */
   color: var(--text-muted);
   line-height: 1.2;
   text-align: left;
-  padding: 4px;
+  padding: 6px;
   font-weight: 500;
   opacity: 0.8;
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  /* 标准属性支持 */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+pocket-watch:before {
+  content: "📅 ";
+  font-size: 0.9em;
 }
 
 /* 右侧主内容区 */
@@ -1535,6 +1723,45 @@
   flex-direction: column;
   overflow: hidden;
   background: var(--background-primary);
+  min-width: 0;
+  /* 允许在分屏下被极度压缩，保证左侧由于 min-width 240px 而不再被裁切 */
+}
+
+.sudoku-viewer-footer {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--background-modifier-border);
+  padding: 16px 0;
+  margin-top: auto;
+  display: flex;
+  justify-content: center;
+}
+
+.sudoku-viewer-name {
+  font-size: 1.4em;
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: var(--text-normal);
+}
+
+.sudoku-viewer-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.sudoku-viewer-date {
+  font-size: 0.9em;
+  color: var(--text-faint);
+  font-family: var(--font-monospace);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sudoku-viewer-date::before {
+  content: "📅";
+  font-size: 1em;
+  opacity: 0.7;
 }
 
 .sudoku-detail-header {

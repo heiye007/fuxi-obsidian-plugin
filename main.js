@@ -252,6 +252,127 @@ class BlockSyncEngine {
     this.db.run('CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)');
     this.db.run('CREATE INDEX IF NOT EXISTS idx_tag_properties_tagName ON tag_properties(tagName)');
     this.db.run('CREATE INDEX IF NOT EXISTS idx_tag_values_block ON tag_values(blockId)');
+
+    // ===== 九宫格相关的表 =====
+    this.db.run(`CREATE TABLE IF NOT EXISTS sudoku_folders (
+      uuid TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      pos INTEGER DEFAULT 0,
+      created_at INTEGER
+    )`);
+
+    this.db.run(`CREATE TABLE IF NOT EXISTS sudokus (
+      uuid TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      folder_uuid TEXT,
+      is_pinned INTEGER DEFAULT 0,
+      pinned_at INTEGER,
+      theme_color TEXT,
+      icon TEXT,
+      is_template INTEGER DEFAULT 0,
+      created_at INTEGER,
+      modified_at INTEGER,
+      FOREIGN KEY (folder_uuid) REFERENCES sudoku_folders(uuid) ON DELETE SET NULL
+    )`);
+
+    // 检查并升级 sudokus 表（添加缺失字段）
+    const columns = [
+      { name: 'folder_uuid', type: 'TEXT' },
+      { name: 'is_pinned', type: 'INTEGER DEFAULT 0' },
+      { name: 'pinned_at', type: 'INTEGER' },
+      { name: 'theme_color', type: 'TEXT' },
+      { name: 'icon', type: 'TEXT' },
+      { name: 'is_template', type: 'INTEGER DEFAULT 0' },
+      { name: 'created_at', type: 'INTEGER' },
+      { name: 'modified_at', type: 'INTEGER' }
+    ];
+
+    for (const col of columns) {
+      try {
+        this.db.run(`ALTER TABLE sudokus ADD COLUMN ${col.name} ${col.type}`);
+      } catch (e) {
+        // 如果列已存在会报错，忽略即可
+      }
+    }
+
+    this.db.run(`CREATE TABLE IF NOT EXISTS sudoku_cells_cache (
+      sudoku_uuid TEXT,
+      cell_index INTEGER,
+      cell_name TEXT,
+      cell_content TEXT,
+      has_content INTEGER,
+      PRIMARY KEY (sudoku_uuid, cell_index),
+      FOREIGN KEY (sudoku_uuid) REFERENCES sudokus(uuid) ON DELETE CASCADE
+    )`);
+
+    this.db.run(`CREATE TABLE IF NOT EXISTS sudoku_tags (
+      sudoku_uuid TEXT,
+      tag_name TEXT,
+      PRIMARY KEY (sudoku_uuid, tag_name),
+      FOREIGN KEY (sudoku_uuid) REFERENCES sudokus(uuid) ON DELETE CASCADE
+    )`);
+
+    this.db.run(`CREATE TABLE IF NOT EXISTS sudoku_access_log (
+      sudoku_uuid TEXT PRIMARY KEY,
+      last_access INTEGER,
+      FOREIGN KEY (sudoku_uuid) REFERENCES sudokus(uuid) ON DELETE CASCADE
+    )`);
+  }
+
+  // 同步单个九宫格到数据库
+  syncSudoku(uuid, name, stats = null) {
+    if (!this.db) return;
+    if (stats) {
+      // 使用 UPSERT 逻辑，避免 REPLACE 摧毁已有状态（如下面的 is_pinned）
+      this.db.run(`INSERT INTO sudokus (uuid, name, created_at, modified_at) 
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(uuid) DO UPDATE SET 
+          name = excluded.name,
+          modified_at = excluded.modified_at,
+          created_at = COALESCE(sudokus.created_at, excluded.created_at)`,
+        [uuid, name, Math.floor(stats.ctime / 1000), Math.floor(stats.mtime / 1000)]);
+    } else {
+      this.db.run(`INSERT INTO sudokus (uuid, name) VALUES (?, ?) 
+        ON CONFLICT(uuid) DO UPDATE SET name=excluded.name`, [uuid, name]);
+    }
+    this._debouncedSave();
+  }
+
+  // 切换置顶状态
+  togglePin(uuid) {
+    if (!this.db) return;
+    const now = Math.floor(Date.now() / 1000);
+    this.db.run(`UPDATE sudokus SET is_pinned = 1 - is_pinned, pinned_at = ? WHERE uuid = ?`, [now, uuid]);
+    this._debouncedSave();
+  }
+
+  // 获取九宫格列表（支持过滤和排序：置顶优先，其次按修改时间）
+  getSudokus(filter = '') {
+    if (!this.db) return [];
+    let sql = `SELECT * FROM sudokus`;
+    let params = [];
+    if (filter) {
+      sql += ` WHERE name LIKE ?`;
+      params.push(`%${filter}%`);
+    }
+    sql += ` ORDER BY is_pinned DESC, pinned_at DESC, modified_at DESC, name ASC`;
+
+    const stmt = this.db.prepare(sql);
+    if (params.length > 0) stmt.bind(params);
+
+    const results = [];
+    while (stmt.step()) {
+      results.push(stmt.getAsObject());
+    }
+    stmt.free();
+    return results;
+  }
+
+  // 从数据库删除九宫格
+  deleteSudoku(uuid) {
+    if (!this.db) return;
+    this.db.run('DELETE FROM sudokus WHERE uuid = ?', [uuid]);
+    this._debouncedSave();
   }
 
   async syncFile(file) {
@@ -391,8 +512,37 @@ class BlockSyncEngine {
   async initialSync() {
     const files = this.plugin.app.vault.getMarkdownFiles();
     for (const file of files) await this.syncFile(file);
+
+    // 同步九宫格文件
+    await this.syncAllSudokus();
+
     await this._saveDb();
     console.log(`[BlockSync] Initial sync complete: ${files.length} files`);
+  }
+
+  // 扫描所有 .jg 文件并同步到数据库
+  async syncAllSudokus() {
+    const jgFolder = `${this.plugin.manifest.dir}/.jg`;
+    const adapter = this.plugin.app.vault.adapter;
+
+    if (!(await adapter.exists(jgFolder))) return;
+
+    const files = await adapter.list(jgFolder);
+    const jgFiles = files.files.filter(f => f.endsWith('.jg'));
+
+    for (const filePath of jgFiles) {
+      try {
+        const uuid = filePath.split('/').pop().replace('.jg', '');
+        const stats = await adapter.stat(filePath);
+        const content = await adapter.read(filePath);
+        const data = JSON.parse(content);
+        if (data && data.name) {
+          this.syncSudoku(uuid, data.name, stats);
+        }
+      } catch (e) {
+        console.error('[SudokuSync] Failed to sync:', filePath, e);
+      }
+    }
   }
 
   // 清理孤立标签：从 tags 表删除不再被任何块引用的标签（tag_properties 通过外键级联自动删除）
@@ -1374,6 +1524,28 @@ class SudokuInputDialog extends Modal {
   }
 }
 
+class SudokuDeleteConfirmModal extends Modal {
+  constructor(app, sudokuName, onConfirm) {
+    super(app);
+    this.sudokuName = sudokuName;
+    this.onConfirm = onConfirm;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.createEl('h3', { text: '确认删除' });
+    contentEl.createEl('p', { text: `确定要删除 "${this.sudokuName}" 吗？此操作不可撤销。` });
+
+    const btnBar = contentEl.createDiv({ cls: 'supertag-editor-btn-bar' });
+    const confirmBtn = btnBar.createEl('button', { text: '删除', cls: 'mod-warning' });
+    confirmBtn.onclick = () => {
+      this.onConfirm();
+      this.close();
+    };
+    btnBar.createEl('button', { text: '取消' }).onclick = () => this.close();
+  }
+}
+
 class SudokuMgmtView extends ItemView {
   constructor(leaf, plugin) {
     super(leaf);
@@ -1443,67 +1615,91 @@ class SudokuMgmtView extends ItemView {
       await adapter.mkdir(jgFolder);
     }
 
-    const files = await adapter.list(jgFolder);
-    const jgFiles = files.files.filter(f => f.endsWith('.jg'));
-    stats.setText(`${jgFiles.length} 个项目`);
-
-    // 搜索过滤
-    const filterValue = searchInput.value.toLowerCase();
+    const initialFilter = searchInput.value.toLowerCase();
     searchInput.oninput = () => {
-      this._renderItems(jgFiles, searchInput.value.toLowerCase()); // Pass current input value
+      this._renderItems(searchInput.value.toLowerCase());
     };
 
-    this._renderItems(jgFiles, filterValue);
+    // 初始渲染时更新统计
+    const initialList = this.plugin._syncEngine.getSudokus(initialFilter);
+    stats.setText(`${initialList.length} 个项目`);
+
+    this._renderItems(initialFilter);
   }
 
-  async _renderItems(jgFiles, filterValue = '') {
+  async _renderItems(filterValue = '') {
     const { contentEl } = this;
-    // Clear previous items container if it exists
     contentEl.findAll('.sudoku-container').forEach(el => el.remove());
 
     const listContainer = contentEl.createDiv({
       cls: `sudoku-container ${this.viewMode === 'grid' ? 'grid-view' : 'list-view'}`
     });
 
-    if (jgFiles.length === 0) {
-      const empty = contentEl.createDiv({ cls: 'sudoku-empty-container' });
-      setIcon(empty.createDiv(), 'layout-grid');
-      empty.createEl('p', { text: '暂无九宫格数据，点击上方按钮新建一个开始吧。' });
+    if (!this.plugin._syncEngine) {
+      const loading = listContainer.createDiv({ cls: 'sudoku-empty-container' });
+      const spinner = loading.createDiv({ cls: 'sudoku-loading-spinner' });
+      setIcon(spinner, 'refresh-cw');
+      loading.createEl('p', { text: '正在初始化同步引擎...' });
       return;
     }
 
-    let foundItems = 0;
-    for (const filePath of jgFiles) {
-      const fileName = filePath.split('/').pop();
+    const sudokuList = this.plugin._syncEngine.getSudokus(filterValue);
+
+    // 如果是主视图渲染，可以在这里更新 header 的统计文字
+    const headerStats = this.contentEl.querySelector('.sudoku-mgmt-stats');
+    if (headerStats) {
+      headerStats.textContent = `${sudokuList.length} 个项目`;
+    }
+
+    if (sudokuList.length === 0) {
+      const empty = contentEl.createDiv({ cls: 'sudoku-empty-container' });
+      if (filterValue) {
+        setIcon(empty.createDiv(), 'search-x');
+        empty.createEl('p', { text: '没有找到匹配的九宫格。' });
+      } else {
+        setIcon(empty.createDiv(), 'layout-grid');
+        empty.createEl('p', { text: '暂无九宫格数据，点击上方按钮新建一个开始吧。' });
+      }
+      return;
+    }
+
+    const jgFolder = `${this.plugin.manifest.dir}/.jg`;
+    for (const sudoku of sudokuList) {
+      const fileName = `${sudoku.uuid}.jg`;
+      const filePath = `${jgFolder}/${fileName}`;
       try {
         const content = await this.app.vault.adapter.read(filePath);
         const data = JSON.parse(content);
 
-        // 搜索过滤逻辑
-        if (filterValue && !data.name?.toLowerCase().includes(filterValue) && !fileName.toLowerCase().includes(filterValue)) {
-          continue;
-        }
-
         if (this.viewMode === 'grid') {
-          this._renderGridItem(listContainer, data, filePath, fileName);
+          this._renderGridItem(listContainer, data, filePath, fileName, sudoku);
         } else {
-          this._renderListItem(listContainer, data, filePath, fileName);
+          this._renderListItem(listContainer, data, filePath, fileName, sudoku);
         }
-        foundItems++;
       } catch (e) {
-        console.error('Failed to parse sudoku file:', filePath, e);
+        console.error('Failed to render sudoku item:', sudoku.uuid, e);
       }
-    }
-
-    if (foundItems === 0 && filterValue) {
-      const empty = contentEl.createDiv({ cls: 'sudoku-empty-container' });
-      setIcon(empty.createDiv(), 'search-x');
-      empty.createEl('p', { text: '没有找到匹配的九宫格。' });
     }
   }
 
-  _renderGridItem(container, data, filePath, fileName) {
-    const item = container.createDiv({ cls: 'sudoku-item grid-style' });
+  _renderGridItem(container, data, filePath, fileName, sudoku = null) {
+    const item = container.createDiv({
+      cls: `sudoku-item grid-style ${sudoku?.is_pinned ? 'is-pinned' : ''}`
+    });
+
+    // 置顶星星按钮
+    const pinBtn = item.createDiv({
+      cls: `sudoku-item-pin ${sudoku?.is_pinned ? 'is-active' : ''}`,
+      attr: { 'aria-label': sudoku?.is_pinned ? '取消置顶' : '置顶' }
+    });
+    setIcon(pinBtn, 'star');
+    pinBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (this.plugin._syncEngine && sudoku) {
+        this.plugin._syncEngine.togglePin(sudoku.uuid);
+        this._render();
+      }
+    };
 
     // 九宫格缩略预览
     const preview = item.createDiv({ cls: 'sudoku-item-preview' });
@@ -1528,8 +1724,11 @@ class SudokuMgmtView extends ItemView {
     info.createDiv({ text: data.name || fileName, cls: 'sudoku-item-name' });
 
     const meta = info.createDiv({ cls: 'sudoku-item-meta' });
-    meta.createEl('span', { text: `v${data.version || 1}` });
-    meta.createEl('span', { text: fileName });
+    const createTime = sudoku?.created_at
+      ? new Date(sudoku.created_at * 1000).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
+      : '未知时间';
+
+    meta.createEl('span', { text: createTime, cls: 'sudoku-item-date' });
 
     const actions = item.createDiv({ cls: 'sudoku-item-actions' });
     const renameBtn = actions.createEl('button', { cls: 'sudoku-action-btn', attr: { 'aria-label': '改名' } });
@@ -1538,13 +1737,29 @@ class SudokuMgmtView extends ItemView {
 
     const deleteBtn = actions.createEl('button', { cls: 'sudoku-action-btn del', attr: { 'aria-label': '删除' } });
     setIcon(deleteBtn, 'trash-2');
-    deleteBtn.onclick = (e) => { e.stopPropagation(); this._delete(filePath); };
+    deleteBtn.onclick = (e) => { e.stopPropagation(); this._delete(filePath, data.name); };
 
     item.onclick = () => this.plugin.openSudokuView(filePath);
   }
 
-  _renderListItem(container, data, filePath, fileName) {
-    const item = container.createDiv({ cls: 'sudoku-item list-style' });
+  _renderListItem(container, data, filePath, fileName, sudoku = null) {
+    const item = container.createDiv({
+      cls: `sudoku-item list-style ${sudoku?.is_pinned ? 'is-pinned' : ''}`
+    });
+
+    // 置顶星星按钮（列表模式显示在最左侧）
+    const pinBtn = item.createDiv({
+      cls: `sudoku-item-pin ${sudoku?.is_pinned ? 'is-active' : ''}`,
+      attr: { 'aria-label': sudoku?.is_pinned ? '取消置顶' : '置顶' }
+    });
+    setIcon(pinBtn, 'star');
+    pinBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (this.plugin._syncEngine && sudoku) {
+        this.plugin._syncEngine.togglePin(sudoku.uuid);
+        this._render();
+      }
+    };
 
     // 小型网格指示器
     const indicator = item.createDiv({ cls: 'sudoku-list-indicator' });
@@ -1571,7 +1786,7 @@ class SudokuMgmtView extends ItemView {
 
     const deleteBtn = actions.createEl('button', { cls: 'sudoku-action-btn del', attr: { 'aria-label': '删除' } });
     setIcon(deleteBtn, 'trash-2');
-    deleteBtn.onclick = (e) => { e.stopPropagation(); this._delete(filePath); };
+    deleteBtn.onclick = (e) => { e.stopPropagation(); this._delete(filePath, data.name); };
 
     item.onclick = () => this.plugin.openSudokuView(filePath);
   }
@@ -1598,6 +1813,12 @@ class SudokuMgmtView extends ItemView {
       };
 
       await adapter.write(filePath, JSON.stringify(data, null, 2));
+
+      // 同步到数据库
+      if (this.plugin._syncEngine) {
+        this.plugin._syncEngine.syncSudoku(uuid, name);
+      }
+
       new Notice(`九宫格 "${name}" 已创建`);
       await this._render();
     }).open();
@@ -1609,16 +1830,31 @@ class SudokuMgmtView extends ItemView {
 
       data.name = newName;
       await this.app.vault.adapter.write(filePath, JSON.stringify(data, null, 2));
+
+      // 同步到数据库
+      if (this.plugin._syncEngine) {
+        const uuid = filePath.split('/').pop().replace('.jg', '');
+        this.plugin._syncEngine.syncSudoku(uuid, newName);
+      }
+
       new Notice('重命名成功');
       await this._render();
     }).open();
   }
 
-  async _delete(filePath) {
-    if (!confirm('确定要删除这个九宫格吗？')) return;
-    await this.app.vault.adapter.remove(filePath);
-    new Notice('已删除');
-    await this._render();
+  async _delete(filePath, sudokuName) {
+    new SudokuDeleteConfirmModal(this.app, sudokuName, async () => {
+      await this.app.vault.adapter.remove(filePath);
+
+      // 从数据库删除
+      if (this.plugin._syncEngine) {
+        const uuid = filePath.split('/').pop().replace('.jg', '');
+        this.plugin._syncEngine.deleteSudoku(uuid);
+      }
+
+      new Notice('已删除');
+      await this._render();
+    }).open();
   }
 
   async refresh() {
@@ -1711,8 +1947,21 @@ class SudokuGridView extends ItemView {
 
     // 左侧/顶部：3x3 导航网格
     this.sidebarEl = layout.createDiv({ cls: 'sudoku-viewer-sidebar' });
-    this.sidebarEl.style.width = `${this.sidebarWidth}px`;
-    this.sidebarEl.style.flex = `0 0 ${this.sidebarWidth}px`;
+    this.sidebarEl.style.width = '40%';
+    this.sidebarEl.style.minWidth = '300px';
+    this.sidebarEl.style.maxWidth = '600px';
+    this.sidebarEl.style.flex = '0 0 auto'; // 强制尊重宽度，不被挤压
+
+    // 渲染标题和日期 (顶部)
+    this.sidebarEl.createDiv({ text: this.data.name, cls: 'sudoku-viewer-name' });
+    const meta = this.sidebarEl.createDiv({ cls: 'sudoku-viewer-meta' });
+    const uuid = this.filePath.split('/').pop().replace('.jg', '');
+    const sudoku = this.plugin._syncEngine?.getSudokus().find(s => s.uuid === uuid);
+    const createTime = sudoku?.created_at
+      ? new Date(sudoku.created_at * 1000).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
+      : '未知时间';
+    meta.createEl('span', { text: createTime, cls: 'sudoku-viewer-date' });
+
     this._renderSidebar(this.sidebarEl);
 
     // 分割线（仅电脑端显示移动效果）
@@ -1728,25 +1977,35 @@ class SudokuGridView extends ItemView {
     resizer.onmousedown = (e) => {
       e.preventDefault();
       const startX = e.clientX;
-      const startWidth = this.sidebarWidth;
+      // 核心修复：获取当前侧边栏的实际像素宽度，而不是使用硬编码的 state 初始值
+      const startWidth = sidebar.getBoundingClientRect().width;
+      this.sidebarWidth = startWidth;
+
+      // 全局状态：防止拖动时由于鼠标移速过快导致的光标闪烁或焦点丢失
+      document.body.addClass('sudoku-is-resizing');
+      resizer.addClass('is-dragging');
 
       const onMouseMove = (moveEvent) => {
         const deltaX = moveEvent.clientX - startX;
-        const newWidth = Math.max(260, Math.min(600, startWidth + deltaX));
+        // 范围限制：300px - 800px，确保侧边栏不会过于窄小
+        const newWidth = Math.max(300, Math.min(800, startWidth + deltaX));
         this.sidebarWidth = newWidth;
+
         sidebar.style.width = `${newWidth}px`;
         sidebar.style.flex = `0 0 ${newWidth}px`;
       };
 
       const onMouseUp = () => {
+        document.body.removeClass('sudoku-is-resizing');
+        resizer.removeClass('is-dragging');
         document.removeEventListener('mousemove', onMouseMove);
         document.removeEventListener('mouseup', onMouseUp);
-        resizer.removeClass('is-dragging');
+        // 保存布局状态
+        this.app.workspace.requestSaveLayout();
       };
 
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
-      resizer.addClass('is-dragging');
     };
   }
 
@@ -1754,7 +2013,8 @@ class SudokuGridView extends ItemView {
     const grid = container.createDiv({ cls: 'sudoku-viewer-grid' });
     this.data.cells.forEach((cell, index) => {
       const cellEl = grid.createDiv({
-        cls: `sudoku-viewer-cell ${this.selectedCellIndex === index ? 'is-selected' : ''}`
+        cls: `sudoku-viewer-cell ${this.selectedCellIndex === index ? 'is-selected' : ''}`,
+        attr: { 'data-index': index }
       });
 
       if (cell.content || cell.name) {
@@ -1891,7 +2151,29 @@ class SudokuGridView extends ItemView {
         value: cell.name || ''
       });
       this.titleInput.placeholder = '输入标题...';
-      this.titleInput.oninput = () => { this._isDirty = true; };
+      this.titleInput.oninput = () => {
+        this._isDirty = true;
+        // 实时同步更侧边栏九宫格中的文字
+        const cellEl = this.sidebarEl.querySelector(`.sudoku-viewer-cell[data-index="${this.selectedCellIndex}"]`);
+        if (cellEl) {
+          let sidebarCellPreview = cellEl.querySelector(`.cell-dot-preview`);
+          if (!sidebarCellPreview && (this.titleInput.value || cell.content)) {
+            // 如果之前是空的，现在有了内容，创建预览元素并添加类
+            cellEl.addClass('has-content');
+            sidebarCellPreview = cellEl.createDiv({ cls: 'cell-dot-preview' });
+          }
+
+          if (sidebarCellPreview) {
+            sidebarCellPreview.textContent = this.titleInput.value || (cell.content ? cell.content.substring(0, 10) : '...');
+          }
+
+          // 如果清空了标题且没有内容，移除标识
+          if (!this.titleInput.value && !cell.content) {
+            cellEl.removeClass('has-content');
+            if (sidebarCellPreview) sidebarCellPreview.remove();
+          }
+        }
+      };
 
       // 2. 真正的大纲编辑器区域
       const contentWrap = editorScroll.createDiv({ cls: 'edit-content-node-wrap' });
@@ -2239,6 +2521,14 @@ module.exports = class SQLiteManagerPlugin extends Plugin {
         await this._syncEngine.init();
         await this._syncEngine.initialSync();
         console.log('[SupertagManager] Block sync engine initialized');
+
+        // 同步完成后，通知所有已打开的管理视图和网格视图刷新
+        this.app.workspace.getLeavesOfType(SUDOKU_MGMT_VIEW_TYPE).forEach(leaf => {
+          if (leaf.view instanceof SudokuMgmtView) leaf.view.refresh();
+        });
+        this.app.workspace.getLeavesOfType(SUDOKU_VIEW_TYPE).forEach(leaf => {
+          if (leaf.view instanceof SudokuGridView) leaf.view.refresh();
+        });
       } catch (e) {
         console.error('[SupertagManager] Failed to init sync engine:', e);
       }
