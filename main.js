@@ -1581,14 +1581,10 @@ class SudokuMgmtView extends ItemView {
       if (!name) return;
 
       const jgFolder = `${this.plugin.manifest.dir}/.jg`;
-      const fileName = `${name}.jg`;
+      const uuid = crypto.randomUUID();
+      const fileName = `${uuid}.jg`;
       const filePath = `${jgFolder}/${fileName}`;
       const adapter = this.app.vault.adapter;
-
-      if (await adapter.exists(filePath)) {
-        new Notice('同名九宫格已存在');
-        return;
-      }
 
       const data = {
         version: 1,
