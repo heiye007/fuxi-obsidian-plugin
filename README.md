@@ -14,6 +14,10 @@
 
 *   **块级粒度管理**：打破文件限制，以“块”为基本单位进行追踪、索引与引用。
 *   **Tana 风格 Supertag**：支持结构化标签。
+*   **九宫格大纲编辑器 (Sudoku Outliner)**：
+    *   **大纲编辑器**：支持快捷键（Enter、Tab、Shift+Tab）快速构建层级。
+    *   **支持折叠/展开**：支持在大纲中折叠/展开任意层级，状态实时同步且受持久化保护。
+    *   **仪表盘**：九宫格管理面板，通过迷你网格实时预览各格子标题与状态。
 *   **高性能 SQLite 驱动**：本地高性能数据库存储，确保在大规模笔记库下依然拥有极速的检索体验。
 *   **智能实时同步**：自动监听文件修改、重命名及删除事件，利用内容哈希（Content Hashing）实现毫秒级的增量更新。
 *   **透明的数据结构**：通过标准的 `files`, `blocks`, `tags` 关系表管理数据，方便二次开发与深度查询。
@@ -25,12 +29,24 @@
 2.  **哈希**：为每个块生成唯一内容哈希，精确识别内容变动。
 3.  **索引**：建立文件-块-标签的多维关联。
 4.  **呈现**：基于索引数据提供 Supertag 属性编辑与块查询视图。
+5.  **九宫格大纲**：提供独立的 .jg 文件格式，支持多层级嵌套数据结构与可视化管理。
 
 ### 📖 快速开始
 
 1.  安装并启用插件。
 2.  插件会自动开始扫描并索引你的仓库。
-3.  在块中使用标签或特定元数据，即可触发高级视图功能。
+3.  在块中使用标签或特定元数据，即可触发supertag视图功能。
+4.  ctrl + p，即可触发九宫格视图功能。
+
+### 💬 交流与赞赏
+
+| 微信群 | 赞赏码 |
+| :---: | :---: |
+| <img src="微信群.jpg" width="280" /> | <img src="赞赏码.jpg" width="280" /> |
+| 欢迎进入微信群交流反馈 | 您的支持是我持续更新的动力 |
+
+**作者**: Heiye  
+**版本**: 0.2
 
 ---
 
@@ -44,6 +60,10 @@ Fuxi is a block management and intelligence indexing system designed specificall
 
 *   **Block-Level Management**: Break free from file boundaries. Track, index, and reference content at the "block" level.
 *   **Tana-style Supertag**: Powerful structured tagging.
+*   **Sudoku Outliner**:
+    *   **Outliner Editor**: Support for hierarchical editing with keyboard shortcuts (Enter, Tab, Shift+Tab).
+    *   **Folding Support**: Collapse/Expand nodes at any level with persistent states.
+    *   **Dashboard**: A 3x3 management panel with real-time previews of cell titles and statuses.
 *   **SQLite Powered**: High-performance local database ensures blazing-fast retrieval even in massive note collections.
 *   **Smart Real-time Sync**: Automatically listens for file modifications, renames, and deletions, utilizing Content Hashing for millisecond-speed incremental updates.
 *   **Transparent Data Schema**: Data is managed via standard relational tables (`files`, `blocks`, `tags`), making it extensible and easy to query.
@@ -55,23 +75,24 @@ Fuxi maintains a real-time mapping of your data in `fuxi.db` located in the plug
 2.  **Hashing**: Generates a unique content hash for each block to precisely track changes.
 3.  **Indexing**: Builds multi-dimensional associations between Files, Blocks, and Tags.
 4.  **Rendering**: Provides Supertag property editing and block query views based on the indexed data.
+5.  **Sudoku View**: Specialized .jg file format supporting nested tree structures and visual management.
 
 ### 📖 Quick Start
 
 1.  Install and enable the plugin.
 2.  The plugin will automatically start scanning and indexing your vault.
-3.  Use tags or specific metadata within a block to trigger advanced view features.
+3.  Use tags or specific metadata within a block to trigger Supertag view features.
+4.  Press `Ctrl + P` to search and trigger Sudoku view features.
 
-### 💬 交流与赞赏 | Community & Support
+### 💬 Community & Support
 
-| 微信群 (WeChat Group) | 赞赏码 (Reward Code) |
+| WeChat Group | Reward Code |
 | :---: | :---: |
 | <img src="微信群.jpg" width="280" /> | <img src="赞赏码.jpg" width="280" /> |
-| 欢迎进入微信群交流反馈 | 您的支持是我持续更新的动力 |
-| Join our group for feedback | Your support is greatly appreciated |
+| Welcome to join our group for feedback | Your support is greatly appreciated |
 
 ---
 
-**作者 (Author)**: Heiye  
-**版本 (Version)**: 0.1
+**Author**: Heiye  
+**Version**: 0.2
 
