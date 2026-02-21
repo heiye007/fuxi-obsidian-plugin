@@ -1,4 +1,7 @@
-const { Plugin, Notice, Modal, Setting, TFile, MarkdownView } = require('obsidian');
+const { Plugin, Notice, Modal, Setting, TFile, MarkdownView, ItemView, setIcon } = require('obsidian');
+
+const SUDOKU_VIEW_TYPE = "sudoku-grid-view";
+const SUDOKU_MGMT_VIEW_TYPE = "sudoku-mgmt-view";
 
 // ========== Supertag 颜色映射 ==========
 const TAG_COLORS = [
@@ -1335,11 +1338,898 @@ class SupertagQueryPanel {
   }
 }
 
+// ========== Sudoku Management ==========
+
+class SudokuInputDialog extends Modal {
+  constructor(app, title, defaultValue, onSave) {
+    super(app);
+    this.title = title;
+    this.value = defaultValue;
+    this.onSave = onSave;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.createEl('h3', { text: this.title });
+
+    const inputRow = contentEl.createDiv({ cls: 'sudoku-cell-editor-row' });
+    const input = inputRow.createEl('input', { type: 'text', cls: 'sudoku-cell-editor-input' });
+    input.value = this.value;
+    input.focus();
+
+    // 监听回车键
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        this.onSave(input.value);
+        this.close();
+      }
+    });
+
+    const btnBar = contentEl.createDiv({ cls: 'supertag-editor-btn-bar' });
+    btnBar.createEl('button', { text: '确定', cls: 'mod-cta' }).onclick = () => {
+      this.onSave(input.value);
+      this.close();
+    };
+    btnBar.createEl('button', { text: '取消' }).onclick = () => this.close();
+  }
+}
+
+class SudokuMgmtView extends ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    this.plugin = plugin;
+    this.viewMode = 'grid'; // 'grid' or 'list'
+  }
+
+  getViewType() { return SUDOKU_MGMT_VIEW_TYPE; }
+  getDisplayText() { return '九宫格管理面板'; }
+  getIcon() { return 'layout-grid'; }
+
+  async onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass('sudoku-mgmt-view');
+    await this._render();
+  }
+
+  async _render() {
+    const { contentEl } = this;
+    contentEl.empty();
+
+    const header = contentEl.createDiv({ cls: 'sudoku-mgmt-header' });
+
+    // 左侧：标题和统计信息
+    const leftHeader = header.createDiv({ cls: 'sudoku-mgmt-header-left' });
+    const titleGroup = leftHeader.createDiv({ cls: 'sudoku-mgmt-title-group' });
+    titleGroup.createEl('h2', { text: '我的九宫格', cls: 'sudoku-mgmt-title' });
+    const stats = titleGroup.createDiv({ cls: 'sudoku-mgmt-stats' });
+
+    // 中间：搜索框
+    const centerHeader = header.createDiv({ cls: 'sudoku-mgmt-header-center' });
+    const searchWrapper = centerHeader.createDiv({ cls: 'sudoku-search-wrapper' });
+    setIcon(searchWrapper.createDiv({ cls: 'sudoku-search-icon' }), 'search');
+    const searchInput = searchWrapper.createEl('input', {
+      cls: 'sudoku-search-input',
+      attr: { placeholder: '搜索九宫格...' }
+    });
+
+    // 右侧：操作区
+    const rightHeader = header.createDiv({ cls: 'sudoku-mgmt-header-right' });
+
+    // 视图切换按钮
+    const modeToggle = rightHeader.createDiv({ cls: 'sudoku-mode-toggle' });
+    const gridBtn = modeToggle.createEl('button', {
+      cls: `sudoku-mode-btn ${this.viewMode === 'grid' ? 'is-active' : ''}`,
+      attr: { 'aria-label': '网格视图' }
+    });
+    setIcon(gridBtn, 'layout-grid');
+    gridBtn.onclick = () => { this.viewMode = 'grid'; this._render(); };
+
+    const listBtn = modeToggle.createEl('button', {
+      cls: `sudoku-mode-btn ${this.viewMode === 'list' ? 'is-active' : ''}`,
+      attr: { 'aria-label': '列表视图' }
+    });
+    setIcon(listBtn, 'list');
+    listBtn.onclick = () => { this.viewMode = 'list'; this._render(); };
+
+    const createBtn = rightHeader.createEl('button', { cls: 'sudoku-create-btn mod-cta' });
+    setIcon(createBtn.createDiv({ cls: 'sudoku-create-icon' }), 'plus');
+    createBtn.createEl('span', { text: '新建' });
+    createBtn.onclick = () => this._createNew();
+
+    const jgFolder = `${this.plugin.manifest.dir}/.jg`;
+    const adapter = this.app.vault.adapter;
+
+    if (!(await adapter.exists(jgFolder))) {
+      await adapter.mkdir(jgFolder);
+    }
+
+    const files = await adapter.list(jgFolder);
+    const jgFiles = files.files.filter(f => f.endsWith('.jg'));
+    stats.setText(`${jgFiles.length} 个项目`);
+
+    // 搜索过滤
+    const filterValue = searchInput.value.toLowerCase();
+    searchInput.oninput = () => {
+      this._renderItems(jgFiles, searchInput.value.toLowerCase()); // Pass current input value
+    };
+
+    this._renderItems(jgFiles, filterValue);
+  }
+
+  async _renderItems(jgFiles, filterValue = '') {
+    const { contentEl } = this;
+    // Clear previous items container if it exists
+    contentEl.findAll('.sudoku-container').forEach(el => el.remove());
+
+    const listContainer = contentEl.createDiv({
+      cls: `sudoku-container ${this.viewMode === 'grid' ? 'grid-view' : 'list-view'}`
+    });
+
+    if (jgFiles.length === 0) {
+      const empty = contentEl.createDiv({ cls: 'sudoku-empty-container' });
+      setIcon(empty.createDiv(), 'layout-grid');
+      empty.createEl('p', { text: '暂无九宫格数据，点击上方按钮新建一个开始吧。' });
+      return;
+    }
+
+    let foundItems = 0;
+    for (const filePath of jgFiles) {
+      const fileName = filePath.split('/').pop();
+      try {
+        const content = await this.app.vault.adapter.read(filePath);
+        const data = JSON.parse(content);
+
+        // 搜索过滤逻辑
+        if (filterValue && !data.name?.toLowerCase().includes(filterValue) && !fileName.toLowerCase().includes(filterValue)) {
+          continue;
+        }
+
+        if (this.viewMode === 'grid') {
+          this._renderGridItem(listContainer, data, filePath, fileName);
+        } else {
+          this._renderListItem(listContainer, data, filePath, fileName);
+        }
+        foundItems++;
+      } catch (e) {
+        console.error('Failed to parse sudoku file:', filePath, e);
+      }
+    }
+
+    if (foundItems === 0 && filterValue) {
+      const empty = contentEl.createDiv({ cls: 'sudoku-empty-container' });
+      setIcon(empty.createDiv(), 'search-x');
+      empty.createEl('p', { text: '没有找到匹配的九宫格。' });
+    }
+  }
+
+  _renderGridItem(container, data, filePath, fileName) {
+    const item = container.createDiv({ cls: 'sudoku-item grid-style' });
+
+    // 九宫格缩略预览
+    const preview = item.createDiv({ cls: 'sudoku-item-preview' });
+    for (let i = 0; i < 9; i++) {
+      const cell = data.cells[i];
+      const cellPreview = preview.createDiv({ cls: 'sudoku-preview-cell' });
+      if (cell) {
+        if (cell.mode === 'query') {
+          cellPreview.addClass('is-query');
+          setIcon(cellPreview, 'search');
+        } else if (cell.name) {
+          cellPreview.addClass('has-content');
+          cellPreview.createDiv({
+            text: cell.name.substring(0, 12),
+            cls: 'sudoku-preview-text'
+          });
+        }
+      }
+    }
+
+    const info = item.createDiv({ cls: 'sudoku-item-info' });
+    info.createDiv({ text: data.name || fileName, cls: 'sudoku-item-name' });
+
+    const meta = info.createDiv({ cls: 'sudoku-item-meta' });
+    meta.createEl('span', { text: `v${data.version || 1}` });
+    meta.createEl('span', { text: fileName });
+
+    const actions = item.createDiv({ cls: 'sudoku-item-actions' });
+    const renameBtn = actions.createEl('button', { cls: 'sudoku-action-btn', attr: { 'aria-label': '改名' } });
+    setIcon(renameBtn, 'pencil');
+    renameBtn.onclick = (e) => { e.stopPropagation(); this._rename(filePath, data); };
+
+    const deleteBtn = actions.createEl('button', { cls: 'sudoku-action-btn del', attr: { 'aria-label': '删除' } });
+    setIcon(deleteBtn, 'trash-2');
+    deleteBtn.onclick = (e) => { e.stopPropagation(); this._delete(filePath); };
+
+    item.onclick = () => this.plugin.openSudokuView(filePath);
+  }
+
+  _renderListItem(container, data, filePath, fileName) {
+    const item = container.createDiv({ cls: 'sudoku-item list-style' });
+
+    // 小型网格指示器
+    const indicator = item.createDiv({ cls: 'sudoku-list-indicator' });
+    for (let i = 0; i < 9; i++) {
+      const cell = data.cells[i];
+      const dot = indicator.createDiv({ cls: 'sudoku-list-dot' });
+      if (cell && cell.content) {
+        dot.addClass('has-content');
+        if (cell.mode === 'query') dot.addClass('is-query');
+      }
+    }
+
+    const info = item.createDiv({ cls: 'sudoku-item-info' });
+    info.createDiv({ text: data.name || fileName, cls: 'sudoku-item-name' });
+
+    const meta = info.createDiv({ cls: 'sudoku-item-meta' });
+    meta.createEl('span', { text: `v${data.version || 1}`, cls: 'sudoku-meta-badge' });
+    meta.createEl('span', { text: fileName, cls: 'sudoku-meta-file' });
+
+    const actions = item.createDiv({ cls: 'sudoku-item-actions' });
+    const renameBtn = actions.createEl('button', { cls: 'sudoku-action-btn', attr: { 'aria-label': '改名' } });
+    setIcon(renameBtn, 'pencil');
+    renameBtn.onclick = (e) => { e.stopPropagation(); this._rename(filePath, data); };
+
+    const deleteBtn = actions.createEl('button', { cls: 'sudoku-action-btn del', attr: { 'aria-label': '删除' } });
+    setIcon(deleteBtn, 'trash-2');
+    deleteBtn.onclick = (e) => { e.stopPropagation(); this._delete(filePath); };
+
+    item.onclick = () => this.plugin.openSudokuView(filePath);
+  }
+
+  async _createNew() {
+    new SudokuInputDialog(this.app, '新建九宫格', '', async (name) => {
+      if (!name) return;
+
+      const jgFolder = `${this.plugin.manifest.dir}/.jg`;
+      const fileName = `${name}.jg`;
+      const filePath = `${jgFolder}/${fileName}`;
+      const adapter = this.app.vault.adapter;
+
+      if (await adapter.exists(filePath)) {
+        new Notice('同名九宫格已存在');
+        return;
+      }
+
+      const data = {
+        version: 1,
+        name: name,
+        columns: 3,
+        cells: Array.from({ length: 9 }, (_, i) => ({
+          id: `cell${i + 1}`,
+          content: '',
+          mode: 'text'
+        }))
+      };
+
+      await adapter.write(filePath, JSON.stringify(data, null, 2));
+      new Notice(`九宫格 "${name}" 已创建`);
+      await this._render();
+    }).open();
+  }
+
+  async _rename(filePath, data) {
+    new SudokuInputDialog(this.app, '改名', data.name, async (newName) => {
+      if (!newName || newName === data.name) return;
+
+      data.name = newName;
+      await this.app.vault.adapter.write(filePath, JSON.stringify(data, null, 2));
+      new Notice('重命名成功');
+      await this._render();
+    }).open();
+  }
+
+  async _delete(filePath) {
+    if (!confirm('确定要删除这个九宫格吗？')) return;
+    await this.app.vault.adapter.remove(filePath);
+    new Notice('已删除');
+    await this._render();
+  }
+
+  async refresh() {
+    await this._render();
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
+class SudokuGridView extends ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    this.plugin = plugin;
+    this.data = null;
+    this.filePath = null;
+    this.selectedCellIndex = 4; // 默认选中中间格
+    this.sidebarWidth = 600; // 默认侧边栏宽度设为最大
+    this.isEditing = false;
+    this._blurTimeout = null;
+    this._diskSaveTimeout = null;
+    this._isDirty = false;
+    this._saveInProgress = false;
+    this._savePromise = Promise.resolve();
+    this.nodes = [];
+    this._collapsedIndices = new Set(); // 记录折叠的节点索引
+  }
+
+  getViewType() { return SUDOKU_VIEW_TYPE; }
+  getDisplayText() { return this.data ? `九宫格: ${this.data.name}` : '九宫格视图'; }
+  getIcon() { return 'grid'; }
+
+  getState() {
+    return {
+      filePath: this.filePath
+    };
+  }
+
+  async setState(state, result) {
+    if (state && state.filePath) {
+      this.filePath = state.filePath;
+      await this.refresh();
+    }
+    await super.setState(state, result);
+  }
+
+  async setFilePath(filePath) {
+    this.filePath = filePath;
+    await this.refresh();
+    // 强制 Obsidian 记录当前视图状态
+    this.app.workspace.requestSaveLayout();
+  }
+
+  async refresh() {
+    if (!this.filePath) return;
+
+    // 如果内存中有未保存的修改，且正在编辑，不要直接覆盖内存，防止清空当前输入
+    if (this._isDirty && this.isEditing) {
+      console.log('[Sudoku] Memory is dirty, skipping refresh to prevent data loss');
+      return;
+    }
+
+    try {
+      const content = await this.app.vault.adapter.read(this.filePath);
+      this.data = JSON.parse(content);
+      console.log('[Sudoku] Loaded data from disk:', this.filePath);
+      await this.onOpen();
+    } catch (e) {
+      console.error('[Sudoku] Failed to load sudoku data:', e);
+    }
+  }
+
+  async onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass('sudoku-viewer-view');
+    contentEl.empty();
+
+    if (!this.data) {
+      if (this.filePath) {
+        // 如果有路径但没数据，说明是恢复状态，自动尝试刷新
+        await this.refresh();
+        return;
+      }
+      contentEl.createEl('p', { text: '未加载数据', cls: 'sudoku-empty-msg' });
+      return;
+    }
+
+    const layout = contentEl.createDiv({ cls: 'sudoku-viewer-layout' });
+
+    // 左侧/顶部：3x3 导航网格
+    this.sidebarEl = layout.createDiv({ cls: 'sudoku-viewer-sidebar' });
+    this.sidebarEl.style.width = `${this.sidebarWidth}px`;
+    this.sidebarEl.style.flex = `0 0 ${this.sidebarWidth}px`;
+    this._renderSidebar(this.sidebarEl);
+
+    // 分割线（仅电脑端显示移动效果）
+    const resizer = layout.createDiv({ cls: 'sudoku-viewer-resizer' });
+    this._initResizer(resizer, this.sidebarEl);
+
+    // 右侧/底部：详情内容区
+    this.mainEl = layout.createDiv({ cls: 'sudoku-viewer-main' });
+    this._renderDetail(this.mainEl);
+  }
+
+  _initResizer(resizer, sidebar) {
+    resizer.onmousedown = (e) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startWidth = this.sidebarWidth;
+
+      const onMouseMove = (moveEvent) => {
+        const deltaX = moveEvent.clientX - startX;
+        const newWidth = Math.max(260, Math.min(600, startWidth + deltaX));
+        this.sidebarWidth = newWidth;
+        sidebar.style.width = `${newWidth}px`;
+        sidebar.style.flex = `0 0 ${newWidth}px`;
+      };
+
+      const onMouseUp = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        resizer.removeClass('is-dragging');
+      };
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+      resizer.addClass('is-dragging');
+    };
+  }
+
+  _renderSidebar(container) {
+    const grid = container.createDiv({ cls: 'sudoku-viewer-grid' });
+    this.data.cells.forEach((cell, index) => {
+      const cellEl = grid.createDiv({
+        cls: `sudoku-viewer-cell ${this.selectedCellIndex === index ? 'is-selected' : ''}`
+      });
+
+      if (cell.content || cell.name) {
+        cellEl.addClass('has-content');
+        if (cell.mode === 'query') {
+          cellEl.addClass('is-query');
+          setIcon(cellEl, 'search');
+        } else {
+          // 简短预览：优先显示格子名称，若无则显示内容预览
+          const preview = cell.name || (cell.content ? cell.content.substring(0, 10) : '...');
+          cellEl.createDiv({ text: preview, cls: 'cell-dot-preview' });
+        }
+      }
+
+      cellEl.onclick = async () => {
+        if (this.selectedCellIndex === index) return;
+
+        // 如果正在编辑，确保保存当前工作
+        if (this.isEditing) {
+          await this._saveCurrentEdits();
+          this.isEditing = false;
+        }
+
+        // 更新选中状态
+        const prevSelected = container.querySelector('.sudoku-viewer-cell.is-selected');
+        if (prevSelected) prevSelected.removeClass('is-selected');
+        cellEl.addClass('is-selected');
+
+        this.selectedCellIndex = index;
+        this._renderDetail(this.mainEl);
+      };
+    });
+  }
+
+  async onClose() {
+    // 视图关闭时尝试最后一次强制保存到磁盘
+    if (this.isEditing) {
+      await this._saveCurrentEdits();
+    } else {
+      await this._saveData();
+    }
+  }
+
+  async _saveCurrentEdits() {
+    if (!this.data || !this.titleInput) return;
+
+    const cell = this.data.cells[this.selectedCellIndex];
+    cell.name = this.titleInput.value.trim();
+
+    // 从节点列表反向序列化回字符串内容
+    if (this.nodesContainer) {
+      cell.content = this._nodesToContent();
+      // 记录折叠状态
+      cell.collapsed = Array.from(this._collapsedIndices);
+    }
+
+    this._isDirty = true;
+    console.log(`[Sudoku] Syncing to memory...`);
+    await this._enqueueSave();
+  }
+
+  // 核心落盘逻辑：将所有修改排队串行写入，防止 Windows/iCloud 文件冲突
+  async _enqueueSave() {
+    if (!this._isDirty) return;
+
+    // 将新的保存请求挂在队列末尾
+    this._savePromise = this._savePromise.then(async () => {
+      try {
+        this._saveInProgress = true;
+        await this._saveData();
+        this._isDirty = false;
+        console.log('[Sudoku] Successfully persisted to disk');
+      } catch (err) {
+        console.error('[Sudoku] PERSISTENCE FAILED:', err);
+      } finally {
+        this._saveInProgress = false;
+      }
+    });
+
+    return this._savePromise;
+  }
+
+  async _renderDetail(container) {
+    // 1. 清理所有待处理的定时器
+    if (this._blurTimeout) {
+      clearTimeout(this._blurTimeout);
+      this._blurTimeout = null;
+    }
+    if (this._diskSaveTimeout) {
+      clearTimeout(this._diskSaveTimeout);
+      this._diskSaveTimeout = null;
+    }
+
+    container.empty();
+    const cell = this.data.cells[this.selectedCellIndex];
+
+    // 头部：标题和操作
+    const header = container.createDiv({ cls: 'sudoku-detail-header' });
+    const headerLeft = header.createDiv({ cls: 'sudoku-detail-header-left' });
+
+    const backBtn = headerLeft.createDiv({ cls: 'sudoku-detail-back-btn', attr: { 'aria-label': '返回管理面板' } });
+    setIcon(backBtn, 'chevron-left');
+    backBtn.onclick = async () => {
+      if (this.isEditing) await this._saveCurrentEdits();
+      this.plugin.openSudokuMgmtView();
+    };
+
+    const titleContainer = headerLeft.createDiv({ cls: 'sudoku-detail-title' });
+    const sudokuName = this.data.name || '未命名';
+    const cellName = cell.name || `格子 ${this.selectedCellIndex + 1}`;
+
+    if (this.isEditing) {
+      // 编辑模式下，头部仅显示九宫格总名称，具体格子名在编辑器第一行修改
+      titleContainer.createEl('h1', { text: sudokuName });
+
+      const actions = header.createDiv({ cls: 'sudoku-detail-actions' });
+      // 按钮已去除，通过失去焦点自动保存
+    } else {
+      // 查看模式下的标题：九宫名 - 格子名
+      titleContainer.createEl('h1', { text: `${sudokuName} - ${cellName}` });
+    }
+
+    const contentBody = container.createDiv({ cls: 'sudoku-detail-body' });
+
+    if (this.isEditing) {
+      contentBody.addClass('is-structured-editing');
+      const editorScroll = contentBody.createDiv({ cls: 'sudoku-editor-scroll' });
+
+      // 1. 标题节点 (根节点)
+      const titleWrap = editorScroll.createDiv({ cls: 'edit-title-node-wrap' });
+      titleWrap.createDiv({ cls: 'outliner-title-dot' });
+      this.titleInput = titleWrap.createEl('input', {
+        cls: 'edit-title-input',
+        value: cell.name || ''
+      });
+      this.titleInput.placeholder = '输入标题...';
+      this.titleInput.oninput = () => { this._isDirty = true; };
+
+      // 2. 真正的大纲编辑器区域
+      const contentWrap = editorScroll.createDiv({ cls: 'edit-content-node-wrap' });
+      this.nodesContainer = contentWrap.createDiv({ cls: 'outliner-editor-container' });
+
+      // 核心修复：进入编辑或切换格子时，必须确保数据正确解析并同步
+      const needsParse = !this.nodes || this.nodes.length === 0 || this._lastParsedIndex !== this.selectedCellIndex;
+      if (needsParse) {
+        console.log('[Sudoku] Parsing content for editor:', cell.content);
+        this.nodes = this._parseContentToNodes(cell.content || '');
+        if (this.nodes.length === 0) this.nodes.push({ text: '', level: 0 });
+        this._lastParsedIndex = this.selectedCellIndex;
+        this._collapsedIndices = new Set(cell.collapsed || []);
+      }
+
+      // 2. 核心可见性算法：线性水位扫描，解决折叠溢出 Bug
+      let activeFoldLevel = Infinity;
+      this.nodes.forEach((node, idx) => {
+        // 判定是否可见
+        if (node.level > activeFoldLevel) {
+          node.isHidden = true;
+        } else {
+          node.isHidden = false;
+          // 到达了同级或更高级，重置折叠判定
+          activeFoldLevel = this._collapsedIndices.has(idx) ? node.level : Infinity;
+        }
+
+        // 判定是否拥有子节点 (用于显示箭头)
+        node.hasChildren = (idx + 1 < this.nodes.length) && (this.nodes[idx + 1].level > node.level);
+        node.isCollapsed = this._collapsedIndices.has(idx);
+      });
+
+      // 渲染所有节点
+      this.nodes.forEach((node, idx) => {
+        if (!node.isHidden) {
+          this._renderEditableNode(this.nodesContainer, node, idx);
+        }
+      });
+
+      // 统一模糊保存
+      const handleBlur = () => {
+        if (this._blurTimeout) clearTimeout(this._blurTimeout);
+        this._blurTimeout = setTimeout(async () => {
+          const active = document.activeElement;
+          // 判定焦点是否逸出编辑器
+          const isInternal = active && (active.hasClass('node-input') || active === this.titleInput || this.nodesContainer.contains(active));
+          if (isInternal) return;
+
+          if (this.isEditing) {
+            await this._saveCurrentEdits();
+            this.isEditing = false;
+            this._renderDetail(container);
+          }
+        }, 200);
+      };
+      this.titleInput.onblur = handleBlur;
+
+      // 仅在首次进入或手动通过双击进入时聚焦标题
+      if (!this._skipInitialFocus) {
+        setTimeout(() => this.titleInput.focus(), 50);
+      }
+      this._skipInitialFocus = false; // 重置标记
+
+    } else {
+      contentBody.addClass('is-clickable');
+      contentBody.setAttribute('aria-label', '双击进入编辑模式');
+      contentBody.ondblclick = () => {
+        if (this.isEditing) return;
+        this.isEditing = true;
+        this.nodes = null; // 触发彻底重解析
+        this._skipInitialFocus = false;
+        this._renderDetail(container);
+      };
+
+      const contentInner = contentBody.createDiv({ cls: 'sudoku-detail-content outliner-rendered' });
+      if (cell.content || cell.name) {
+        if (cell.mode === 'query') {
+          const { MarkdownRenderer } = require('obsidian');
+          await MarkdownRenderer.renderMarkdown(cell.content, contentInner, '', this.plugin);
+        } else {
+          // 渲染为节点模式 (Outliner)
+          const outliner = contentInner.createDiv({ cls: 'sudoku-outliner-view' });
+
+          // 1. 标题行 (区分显示)
+          if (cell.name) {
+            const titleNode = outliner.createDiv({ cls: 'outliner-title-node' });
+            titleNode.createDiv({ cls: 'outliner-title-dot' }); // 标题特有的点
+            titleNode.createDiv({ text: cell.name, cls: 'outliner-title-text' });
+          }
+
+          // 2. 内容节点
+          if (cell.content) {
+            const lines = cell.content.split('\n');
+            const nodesContainer = outliner.createDiv({ cls: 'outliner-nodes-container' });
+
+            // 解析折叠状态图标
+            const collapsedSet = new Set(cell.collapsed || []);
+            let activeFoldLevel = Infinity;
+
+            lines.forEach((line, idx) => {
+              if (line.trim() === '' && lines.length > 1) return;
+
+              const tabMatch = line.match(/^\t+/);
+              const level = tabMatch ? tabMatch[0].length : 0;
+
+              // 判定是否可见 (线性水位算法)
+              let isHidden = false;
+              if (level > activeFoldLevel) {
+                isHidden = true;
+              } else {
+                isHidden = false;
+                activeFoldLevel = collapsedSet.has(idx) ? level : Infinity;
+              }
+              if (isHidden) return;
+
+              const nodeEl = nodesContainer.createDiv({ cls: 'outliner-node' });
+              if (level > 0) nodeEl.style.paddingLeft = `${level * 24}px`;
+
+              // 判定当前行是否有子节点 (智能跳过空行)
+              let hasChildren = false;
+              for (let i = idx + 1; i < lines.length; i++) {
+                if (lines[i].trim() !== '') {
+                  const nextTabMatch = lines[i].match(/^\t+/);
+                  const nextLevel = nextTabMatch ? nextTabMatch[0].length : 0;
+                  if (nextLevel > level) hasChildren = true;
+                  break;
+                }
+              }
+              if (hasChildren) nodeEl.addClass('has-children');
+
+              const bullet = nodeEl.createDiv({ cls: 'outliner-node-bullet' });
+              const toggleIcon = bullet.createDiv({ cls: 'node-toggle-icon' });
+              setIcon(toggleIcon, 'chevron-down');
+
+              if (collapsedSet.has(idx)) {
+                bullet.addClass('is-collapsed');
+                nodeEl.addClass('is-collapsed');
+              }
+
+              // 阅读模式点击折叠
+              bullet.onclick = async (e) => {
+                e.stopPropagation();
+                const currentCollapsed = new Set(cell.collapsed || []);
+                if (currentCollapsed.has(idx)) {
+                  currentCollapsed.delete(idx);
+                } else {
+                  currentCollapsed.add(idx);
+                }
+                cell.collapsed = Array.from(currentCollapsed);
+
+                // 同步持久化
+                this._isDirty = true;
+                await this._enqueueSave();
+                this._renderDetail(container);
+              };
+
+              nodeEl.createDiv({ text: line.trim(), cls: 'outliner-node-text' });
+            });
+          }
+        }
+      } else {
+        contentInner.createDiv({ text: '此格子暂无内容 (双击进入节点编辑模式)', cls: 'sudoku-detail-empty' });
+      }
+    }
+  }
+
+  // --- 大纲编辑器核心方法 ---
+
+  _parseContentToNodes(content) {
+    if (!content) return [];
+    return content.split('\n').map(line => {
+      const tabMatch = line.match(/^\t+/);
+      const level = tabMatch ? tabMatch[0].length : 0;
+      return { text: line.trim(), level };
+    });
+  }
+
+  _nodesToContent() {
+    return this.nodes.map(node => '\t'.repeat(node.level) + node.text).join('\n');
+  }
+
+  _renderEditableNode(parent, node, index) {
+    const nodeEl = parent.createDiv({
+      cls: 'outliner-editor-node',
+      attr: { 'data-level': node.level + 1 }
+    });
+    if (node.hasChildren) nodeEl.addClass('has-children');
+    if (node.isCollapsed) nodeEl.addClass('is-collapsed');
+
+    const bulletWrap = nodeEl.createDiv({ cls: 'node-bullet-wrap' });
+    const toggleIcon = bulletWrap.createDiv({ cls: 'node-toggle-icon' });
+    setIcon(toggleIcon, 'chevron-down');
+    bulletWrap.createDiv({ cls: 'node-bullet' });
+
+    // 处理折叠点击
+    bulletWrap.onclick = (e) => {
+      e.stopPropagation();
+      if (!node.hasChildren) return;
+
+      if (this._collapsedIndices.has(index)) {
+        this._collapsedIndices.delete(index);
+      } else {
+        this._collapsedIndices.add(index);
+      }
+      this._skipInitialFocus = true;
+      this._renderDetail(this.mainEl);
+      this._saveCurrentEdits(); // 记录折叠状态
+    };
+
+    const inputContainer = nodeEl.createDiv({ cls: 'node-input-container' });
+    const input = inputContainer.createEl('textarea', {
+      cls: 'node-input',
+      attr: { rows: 1 }
+    });
+    input.value = node.text || ''; // 显式赋值保障可靠性
+    input.placeholder = '节点内容...';
+
+    // 动态高度调整
+    const adjustHeight = () => {
+      input.style.height = 'auto';
+      input.style.height = input.scrollHeight + 'px';
+    };
+    setTimeout(adjustHeight, 0);
+
+    input.oninput = () => {
+      node.text = input.value;
+      this._isDirty = true;
+      adjustHeight();
+
+      // 即时同步到 cell.content 内存对象，防止异步保存读取到旧数据
+      const cell = this.data.cells[this.selectedCellIndex];
+      cell.content = this._nodesToContent();
+
+      // 节流落盘
+      clearTimeout(this._diskSaveTimeout);
+      this._diskSaveTimeout = setTimeout(() => this._enqueueSave(), 1500);
+    };
+
+    input.onblur = () => {
+      if (this._blurTimeout) clearTimeout(this._blurTimeout);
+      this._blurTimeout = setTimeout(async () => {
+        const active = document.activeElement;
+        if (active && (active.hasClass('node-input') || active === this.titleInput)) return;
+        if (this.isEditing) {
+          await this._saveCurrentEdits();
+          this.isEditing = false;
+          this._renderDetail(this.mainEl);
+        }
+      }, 300);
+    };
+
+    input.onkeydown = async (e) => {
+      // 在执行结构操作前，先确保当前输入的文字已同步到内存
+      node.text = input.value;
+
+      if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        const newNode = { text: '', level: node.level };
+        this.nodes.splice(index + 1, 0, newNode);
+        this._skipInitialFocus = true;
+        this._renderDetail(this.mainEl);
+        setTimeout(() => {
+          const allInputs = this.nodesContainer.querySelectorAll('.node-input');
+          allInputs[index + 1]?.focus();
+        }, 10);
+      } else if (e.key === 'Backspace' && input.value === '' && this.nodes.length > 1) {
+        e.preventDefault();
+        this.nodes.splice(index, 1);
+        this._skipInitialFocus = true;
+        this._renderDetail(this.mainEl);
+        setTimeout(() => {
+          const allInputs = this.nodesContainer.querySelectorAll('.node-input');
+          const prevInput = allInputs[index - 1] || this.titleInput;
+          prevInput.focus();
+        }, 10);
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          if (node.level > 0) node.level--;
+        } else {
+          if (node.level < 8) node.level++;
+        }
+        this._skipInitialFocus = true;
+        this._renderDetail(this.mainEl);
+        setTimeout(() => {
+          const allInputs = this.nodesContainer.querySelectorAll('.node-input');
+          allInputs[index]?.focus();
+        }, 10);
+      } else if (e.key === 'ArrowUp' && input.selectionStart === 0) {
+        const allInputs = this.nodesContainer.querySelectorAll('.node-input');
+        if (index > 0) (allInputs[index - 1]).focus();
+        else this.titleInput.focus();
+      } else if (e.key === 'ArrowDown' && input.selectionEnd === input.value.length) {
+        const allInputs = this.nodesContainer.querySelectorAll('.node-input');
+        if (index < allInputs.length - 1) (allInputs[index + 1]).focus();
+      } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        this.isEditing = false;
+        await this._saveCurrentEdits();
+        this._renderDetail(this.mainEl);
+      }
+    };
+  }
+
+  async _saveData() {
+    await this.app.vault.adapter.write(this.filePath, JSON.stringify(this.data, null, 2));
+  }
+}
+
 // ========== Plugin ==========
 module.exports = class SQLiteManagerPlugin extends Plugin {
   async onload() {
     this._sqlEngine = null;
     this._syncEngine = null;
+
+    // 注册九宫格视图
+    this.registerView(
+      SUDOKU_VIEW_TYPE,
+      (leaf) => new SudokuGridView(leaf, this)
+    );
+
+    // 注册九宫格管理视图
+    this.registerView(
+      SUDOKU_MGMT_VIEW_TYPE,
+      (leaf) => new SudokuMgmtView(leaf, this)
+    );
+
+    // 添加命令：打开九宫格管理面板
+    this.addCommand({
+      id: 'open-sudoku-manager',
+      name: '打开九宫格视图',
+      callback: () => {
+        this.openSudokuMgmtView();
+      }
+    });
 
     // 所有文档都应用 SuperTagView，不再依赖 YAML frontmatter
     this.registerMarkdownPostProcessor((element, context) => {
@@ -1360,8 +2250,24 @@ module.exports = class SQLiteManagerPlugin extends Plugin {
 
     // 文件事件监听
     this.registerEvent(this.app.vault.on('modify', (file) => {
+      // 1. 处理块同步
       if (this._syncEngine && file instanceof TFile && file.extension === 'md') {
         this._syncEngine.syncFile(file);
+      }
+
+      // 2. 实时刷新九宫格视图 (管理面板 & 格子详情)
+      if (file instanceof TFile && file.extension === 'jg') {
+        const leaves = this.app.workspace.getLeavesOfType(SUDOKU_MGMT_VIEW_TYPE);
+        leaves.forEach(leaf => {
+          if (leaf.view instanceof SudokuMgmtView) leaf.view.refresh();
+        });
+
+        const gridLeaves = this.app.workspace.getLeavesOfType(SUDOKU_VIEW_TYPE);
+        gridLeaves.forEach(leaf => {
+          if (leaf.view instanceof SudokuGridView && leaf.view.filePath === file.path) {
+            leaf.view.refresh();
+          }
+        });
       }
     }));
 
@@ -1538,5 +2444,44 @@ module.exports = class SQLiteManagerPlugin extends Plugin {
     const wasmBinary = await this.app.vault.adapter.readBinary(wasmPath);
     this._sqlEngine = await initSqlJs({ wasmBinary });
     return this._sqlEngine;
+  }
+
+  async openSudokuView(filePath) {
+    let leaf = null;
+    const leaves = this.app.workspace.getLeavesOfType(SUDOKU_VIEW_TYPE);
+
+    if (leaves.length > 0) {
+      leaf = leaves[0];
+    } else {
+      leaf = this.app.workspace.getLeaf(true);
+      await leaf.setViewState({
+        type: SUDOKU_VIEW_TYPE,
+        active: true,
+      });
+    }
+
+    const view = leaf.view;
+    if (view instanceof SudokuGridView) {
+      await view.setFilePath(filePath);
+    }
+
+    this.app.workspace.revealLeaf(leaf);
+  }
+
+  async openSudokuMgmtView() {
+    let leaf = null;
+    const leaves = this.app.workspace.getLeavesOfType(SUDOKU_MGMT_VIEW_TYPE);
+
+    if (leaves.length > 0) {
+      leaf = leaves[0];
+    } else {
+      leaf = this.app.workspace.getLeaf(true);
+      await leaf.setViewState({
+        type: SUDOKU_MGMT_VIEW_TYPE,
+        active: true,
+      });
+    }
+
+    this.app.workspace.revealLeaf(leaf);
   }
 };

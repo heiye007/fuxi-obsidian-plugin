@@ -835,7 +835,1278 @@
   margin: 0;
 }
 
-/* 查询结果表格 */
+/* 隐藏视图头部 (Hide View Header) */
+[data-type="sudoku-grid-view"] .view-header,
+[data-type="sudoku-mgmt-view"] .view-header {
+  display: none !important;
+  height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+}
+
+/* 移除由于隐藏头部可能留下的顶部间距 */
+.sudoku-mgmt-view,
+.sudoku-grid-view {
+  padding-top: 0 !important;
+  margin-top: 0 !important;
+}
+
+/* ========== 九宫格管理面板 (Sudoku Management) ========== */
+
+.sudoku-mgmt-view {
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.sudoku-mgmt-header {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  padding: 24px 40px !important;
+  background: var(--background-primary);
+  border-bottom: 1px solid var(--background-modifier-border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  gap: 32px !important;
+}
+
+.sudoku-mgmt-header-left {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+}
+
+.sudoku-mgmt-title-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.sudoku-mgmt-title {
+  font-size: 1.6em !important;
+  font-weight: 700 !important;
+  margin: 0 !important;
+  color: var(--text-normal);
+}
+
+.sudoku-mgmt-stats {
+  font-size: 0.85em;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+
+/* 搜索框设计 */
+.sudoku-mgmt-header-center {
+  flex: 1;
+  max-width: 500px;
+}
+
+.sudoku-search-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.sudoku-search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+.sudoku-search-input {
+  width: 100%;
+  padding: 10px 12px 10px 38px !important;
+  background: var(--background-secondary) !important;
+  border: 1px solid var(--background-modifier-border) !important;
+  border-radius: 12px !important;
+  font-size: 13px;
+  transition: all 0.2s ease;
+  box-shadow: none !important;
+}
+
+.sudoku-search-input:focus {
+  background: var(--background-primary) !important;
+  border-color: var(--interactive-accent) !important;
+  box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.1) !important;
+}
+
+.sudoku-mgmt-header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 0 0 auto;
+}
+
+/* 视图模式切换 */
+.sudoku-mode-toggle {
+  display: flex;
+  background: var(--background-secondary);
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.sudoku-mode-btn {
+  width: 36px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: var(--text-faint);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sudoku-mode-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover) !important;
+}
+
+.sudoku-mode-btn.is-active {
+  color: var(--interactive-accent);
+  background: var(--background-primary) !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05) !important;
+}
+
+.sudoku-create-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px !important;
+  border-radius: 10px !important;
+  font-weight: 600 !important;
+}
+
+/* 容器布局 */
+.sudoku-container {
+  padding: 40px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.sudoku-container.grid-view {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important;
+  gap: 24px !important;
+}
+
+.sudoku-container.list-view {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+}
+
+/* 移动端优化 (Mobile Optimization) */
+.is-mobile .sudoku-mgmt-view {
+  padding-top: var(--safe-area-inset-top, 0) !important;
+}
+
+.is-mobile .sudoku-mgmt-header {
+  padding: 16px 20px !important;
+  gap: 12px !important;
+  flex-wrap: wrap;
+  /* 允许在极小屏幕上换行 */
+}
+
+.is-mobile .sudoku-mgmt-title {
+  font-size: 1.3em !important;
+}
+
+.is-mobile .sudoku-mgmt-stats {
+  font-size: 0.75em;
+}
+
+.is-mobile .sudoku-mgmt-header-center {
+  order: 3;
+  /* 将搜索框放到第二行 */
+  width: 100%;
+  max-width: none;
+  margin-top: 8px;
+}
+
+.is-mobile .sudoku-search-input {
+  padding: 8px 12px 8px 34px !important;
+  font-size: 14px;
+  /* 防止手机端输入自动放大 */
+}
+
+.is-mobile .sudoku-mgmt-header-right {
+  order: 2;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.is-mobile .sudoku-mode-toggle {
+  display: flex !important;
+  /* 展示出来 */
+  padding: 2px;
+}
+
+.is-mobile .sudoku-mode-btn {
+  width: 32px;
+  height: 28px;
+}
+
+.is-mobile .sudoku-create-btn {
+  padding: 4px 10px !important;
+  height: 32px;
+}
+
+.is-mobile .sudoku-create-btn span {
+  display: none;
+  /* 手机端只显示加号图标 */
+}
+
+.is-mobile .sudoku-container {
+  padding: 16px !important;
+}
+
+.is-mobile .sudoku-container.grid-view {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
+  /* 手机端每行两个 */
+  gap: 12px !important;
+}
+
+.is-mobile .sudoku-item.grid-style {
+  padding: 12px;
+  border-radius: 12px;
+}
+
+.is-mobile .sudoku-item-preview {
+  margin-bottom: 8px;
+  gap: 2px;
+  padding: 2px;
+}
+
+.is-mobile .sudoku-item.grid-style .sudoku-item-name {
+  font-size: 0.95em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.is-mobile .sudoku-item.grid-style .sudoku-item-meta {
+  display: none;
+  /* 手机端隐藏复杂的元数据 */
+}
+
+.is-mobile .sudoku-item.grid-style .sudoku-item-actions {
+  opacity: 1;
+  /* 手机端不能 hover，直接显示按钮 */
+  transform: none;
+  top: 4px;
+  right: 4px;
+}
+
+.is-mobile .sudoku-action-btn {
+  width: 24px;
+  height: 24px;
+}
+
+/* 列表样式 */
+.sudoku-item.list-style {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  position: relative;
+}
+
+.sudoku-item.grid-style:hover {
+  border-color: var(--interactive-accent);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
+  background: var(--background-secondary-alt);
+}
+
+.sudoku-item-preview {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 4px;
+  aspect-ratio: 1/1;
+  background: var(--background-modifier-border);
+  padding: 4px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+}
+
+.sudoku-preview-cell {
+  background: var(--background-primary);
+  border-radius: 6px;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border-focus);
+}
+
+.sudoku-preview-cell.has-content {
+  background: var(--background-primary);
+  border-color: var(--interactive-accent);
+  box-shadow: inset 0 0 0 1px var(--interactive-accent);
+}
+
+.sudoku-preview-text {
+  font-size: 9px;
+  line-height: 1.2;
+  color: var(--text-normal);
+  padding: 2px;
+  text-align: left;
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  opacity: 0.8;
+}
+
+.sudoku-preview-cell.is-query {
+  background: rgba(var(--interactive-accent-rgb), 0.1);
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+}
+
+.sudoku-preview-cell.is-query svg {
+  width: 12px;
+  height: 12px;
+  opacity: 0.6;
+}
+
+.sudoku-item.grid-style .sudoku-item-info {
+  margin-bottom: 12px;
+}
+
+.sudoku-item.grid-style .sudoku-item-name {
+  font-weight: 700;
+  font-size: 1.1em;
+  margin-bottom: 4px;
+}
+
+.sudoku-item.grid-style .sudoku-item-meta {
+  font-size: 0.8em;
+  color: var(--text-faint);
+  display: flex;
+  justify-content: space-between;
+}
+
+.sudoku-item.grid-style .sudoku-item-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transform: translateY(-5px);
+  transition: all 0.2s ease;
+}
+
+.sudoku-item.grid-style:hover .sudoku-item-actions {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* 列表样式 */
+.sudoku-item.list-style {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 20px !important;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  padding: 10px 20px !important;
+  min-height: 56px !important;
+  height: auto !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+
+.sudoku-item.list-style:hover {
+  background: var(--background-secondary-alt);
+  border-color: var(--interactive-accent);
+  transform: translateX(4px);
+  box-shadow: var(--shadow-s);
+}
+
+.sudoku-list-indicator {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  width: 24px;
+  height: 24px;
+  background: var(--background-modifier-border);
+  padding: 2px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.sudoku-list-dot {
+  background: var(--background-primary);
+  border-radius: 1px;
+  opacity: 0.2;
+}
+
+.sudoku-list-dot.has-content {
+  opacity: 1;
+  background: var(--interactive-accent);
+}
+
+.sudoku-list-dot.is-query {
+  background: var(--text-accent);
+}
+
+.sudoku-item.list-style .sudoku-item-info {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.sudoku-item.list-style .sudoku-item-name {
+  font-weight: 600;
+  font-size: 1.05em;
+  color: var(--text-normal);
+  min-width: 120px;
+}
+
+.sudoku-item.list-style .sudoku-item-meta {
+  font-size: 0.8em;
+  color: var(--text-faint);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sudoku-meta-badge {
+  background: var(--background-modifier-border);
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.sudoku-meta-file {
+  font-family: var(--font-monospace);
+  opacity: 0.7;
+}
+
+.sudoku-item.list-style .sudoku-item-actions {
+  display: flex !important;
+  gap: 8px;
+  opacity: 0;
+  transition: all 0.2s ease;
+  transform: translateX(10px);
+}
+
+.sudoku-item.list-style:hover .sudoku-item-actions {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* 空状态 */
+.sudoku-empty-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 0;
+  color: var(--text-faint);
+}
+
+.sudoku-empty-container svg {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 16px;
+  opacity: 0.2;
+}
+
+/* 通用按钮修复 */
+.sudoku-action-btn.del:hover {
+  color: #ff4757 !important;
+  background: rgba(255, 71, 87, 0.1) !important;
+}
+
+/* ========== 九宫格网格视图 (Sudoku Grid View) ========== */
+/* ========== 全局美化补丁 (Global Aesthetic Patches) ========== */
+
+.sudoku-mgmt-view ::-webkit-scrollbar,
+.sudoku-viewer-view ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.sudoku-mgmt-view ::-webkit-scrollbar-thumb,
+.sudoku-viewer-view ::-webkit-scrollbar-thumb {
+  background: var(--background-modifier-border-focus);
+  border-radius: 10px;
+}
+
+.sudoku-mgmt-view ::-webkit-scrollbar-thumb:hover,
+.sudoku-viewer-view ::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+}
+
+/* ========== 九宫格详情视图 (Sudoku Viewer View) ========== */
+
+.sudoku-viewer-view {
+  padding: 0 !important;
+  height: 100%;
+}
+
+.sudoku-viewer-layout {
+  display: flex;
+  height: 100%;
+  background: var(--background-primary);
+}
+
+/* 侧边栏导航 */
+.sudoku-viewer-sidebar {
+  flex: 0 0 340px;
+  padding: 20px 16px;
+  background: var(--background-secondary-alt);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  /* 居中显示纯净的九宫格 */
+  box-shadow: inset -10px 0 20px -15px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  height: 100%;
+  border-right: none;
+}
+
+.sudoku-sidebar-title-info {
+  text-align: center;
+  width: 100%;
+  padding: 0 8px;
+}
+
+.sudoku-sidebar-file-name {
+  font-size: 1.1em;
+  font-weight: 800;
+  color: var(--text-normal);
+  letter-spacing: -0.01em;
+  background: linear-gradient(135deg, var(--text-normal) 0%, var(--text-muted) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.sudoku-sidebar-meta-row {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  opacity: 0.6;
+}
+
+.sudoku-sidebar-meta-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75em;
+  color: var(--text-faint);
+}
+
+/* 分割线 (Resizer) */
+.sudoku-viewer-resizer {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.2s ease;
+  position: relative;
+  z-index: 15;
+  flex-shrink: 0;
+}
+
+.sudoku-viewer-resizer::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--background-modifier-border);
+}
+
+.sudoku-viewer-resizer:hover,
+.sudoku-viewer-resizer.is-dragging {
+  background: var(--interactive-accent);
+}
+
+.sudoku-viewer-resizer:hover::after,
+.sudoku-viewer-resizer.is-dragging::after {
+  background: transparent;
+}
+
+.sudoku-viewer-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 3%;
+  width: 95%;
+  /* 占用侧边栏 95% 的宽度 */
+  max-width: none !important;
+  /* 解除宽度限制，随拖动无限缩放 */
+  aspect-ratio: 1 / 1;
+  padding: 10px;
+  background: var(--background-primary);
+  border-radius: 12px;
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: var(--shadow-s);
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.sudoku-viewer-cell {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.sudoku-viewer-cell:hover {
+  border-color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+  transform: scale(1.05);
+}
+
+.sudoku-viewer-cell.is-selected {
+  border-color: var(--interactive-accent);
+  background: var(--background-primary);
+  box-shadow: 0 0 0 3px rgba(var(--interactive-accent-rgb), 0.2),
+    0 8px 16px -4px rgba(0, 0, 0, 0.1);
+  transform: scale(1.1);
+  z-index: 5;
+}
+
+.sudoku-viewer-cell.has-content::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  background: var(--interactive-accent);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--interactive-accent);
+}
+
+.sudoku-viewer-cell.is-query {
+  color: var(--interactive-accent);
+}
+
+.cell-dot-preview {
+  font-size: 15px;
+  color: var(--text-muted);
+  line-height: 1.2;
+  text-align: left;
+  padding: 4px;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+/* 右侧主内容区 */
+.sudoku-viewer-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--background-primary);
+}
+
+.sudoku-detail-header {
+  padding: 8px 32px;
+  /* 极致压缩头部垂直高度 */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--background-primary);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 1px 0 var(--background-modifier-border);
+}
+
+.sudoku-detail-header-left {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.sudoku-detail-back-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--text-faint);
+  transition: all 0.2s ease;
+}
+
+.sudoku-detail-back-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+  border-color: var(--interactive-accent);
+  transform: translateX(-2px);
+}
+
+.sudoku-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.sudoku-detail-title h1 {
+  font-size: 1.1em !important;
+  /* 信息头部标题缩小，不与格子标题抢占视觉 */
+  font-weight: 600 !important;
+  margin: 0 !important;
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+
+.sudoku-mode-badge {
+  font-size: 0.7em;
+  padding: 5px 14px;
+  border-radius: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.sudoku-mode-badge.text {
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.sudoku-mode-badge.query {
+  background: rgba(var(--interactive-accent-rgb), 0.1);
+  color: var(--interactive-accent);
+  border: 1px solid rgba(var(--interactive-accent-rgb), 0.2);
+}
+
+.sudoku-detail-actions button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px !important;
+  border-radius: 12px !important;
+  font-weight: 600 !important;
+  font-size: 0.95em !important;
+  transition: all 0.2s ease !important;
+}
+
+.sudoku-detail-actions button:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-m) !important;
+}
+
+/* ========== 结构化编辑器 (Structured Outliner Editor) ========== */
+
+.sudoku-editor-scroll {
+  flex: 1;
+  padding: 0 0 20px 12px;
+  /* 顶部 0，左侧保留 12px 呼吸感 */
+  overflow-y: auto;
+}
+
+/* 标题节点编辑 */
+.edit-title-node-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  padding: 0;
+  /* 移除 padding */
+}
+
+.edit-title-input {
+  flex: 1;
+  background: transparent !important;
+  border: none !important;
+  font-size: 1.45em !important;
+  font-weight: 800 !important;
+  color: var(--text-normal);
+  padding: 8px 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* 真正的大纲编辑器 (True Outliner) */
+.outliner-editor-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 200px;
+  /* 留出底部空间 */
+}
+
+.outliner-editor-node {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  position: relative;
+  transition: all 0.2s ease;
+  padding: 2px 0;
+}
+
+/* 隐藏被父节点折叠的后代 */
+.outliner-editor-node.is-hidden {
+  display: none;
+}
+
+.outliner-editor-node:hover .node-bullet {
+  background-color: var(--interactive-accent);
+  transform: scale(1.2);
+}
+
+.node-bullet-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 28px;
+  /* 匹配文本行高 */
+  flex-shrink: 0;
+  cursor: pointer;
+  position: relative;
+}
+
+.node-bullet {
+  width: 5px;
+  height: 5px;
+  background-color: var(--text-muted);
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+/* 折叠箭头 */
+.node-toggle-icon {
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%) rotate(0deg);
+  font-size: 10px;
+  color: var(--text-faint);
+  transition: transform 0.2s ease;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+}
+
+.outliner-editor-node.has-children .node-toggle-icon {
+  opacity: 1;
+}
+
+.outliner-editor-node.is-collapsed .node-toggle-icon {
+  transform: translateY(-50%) rotate(-90deg);
+}
+
+.outliner-editor-node.is-collapsed .node-bullet {
+  box-shadow: 0 0 0 2px var(--background-modifier-border);
+  background-color: var(--interactive-accent);
+}
+
+.node-input-container {
+  flex: 1;
+  min-width: 0;
+}
+
+.node-input {
+  width: 100%;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  font-family: var(--font-text) !important;
+  font-size: 1.05em;
+  line-height: 1.8;
+  color: var(--text-normal);
+  padding: 0 !important;
+  margin: 0 !important;
+  resize: none;
+  outline: none;
+  display: block;
+  overflow: hidden;
+  /* 由 JS 动态调整高度 */
+}
+
+/* 引导线对齐 */
+.outliner-editor-node::before {
+  content: "";
+  position: absolute;
+  left: 11.5px;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background-color: var(--background-modifier-border);
+  opacity: 0;
+}
+
+.outliner-editor-node.has-children::before {
+  opacity: 0.5;
+}
+
+/* 缩进级别 */
+.outliner-editor-node[data-level="1"] {
+  padding-left: 0;
+}
+
+.outliner-editor-node[data-level="2"] {
+  padding-left: 24px;
+}
+
+.outliner-editor-node[data-level="3"] {
+  padding-left: 48px;
+}
+
+.outliner-editor-node[data-level="4"] {
+  padding-left: 72px;
+}
+
+.outliner-editor-node[data-level="5"] {
+  padding-left: 96px;
+}
+
+.outliner-editor-node[data-level="6"] {
+  padding-left: 120px;
+}
+
+.outliner-editor-node[data-level="7"] {
+  padding-left: 144px;
+}
+
+.outliner-editor-node[data-level="8"] {
+  padding-left: 168px;
+}
+
+.outliner-editor-node[data-level="9"] {
+  padding-left: 192px;
+}
+
+/* 内容节点编辑 */
+.edit-content-node-wrap {
+  display: flex;
+  position: relative;
+  padding-left: 0;
+  /* 对齐标题点中心并微调 */
+  margin-top: 4px;
+}
+
+.edit-content-textarea {
+  flex: 1;
+  padding-left: 0 !important;
+  /* 留出足够的左侧空间给圆点和线 */
+  margin-left: 0;
+
+  background-color: transparent !important;
+
+  border: none !important;
+  font-family: var(--font-text) !important;
+  font-size: 1.05em;
+  line-height: 1.8;
+  color: var(--text-normal);
+  resize: none;
+  outline: none;
+  tab-size: 4;
+  box-shadow: none !important;
+  padding-top: 0 !important;
+}
+
+.sudoku-detail-body {
+  flex: 1;
+  padding: 0 0 20px 12px;
+  /* 顶部 0，左侧保留 12px 呼吸感 */
+  overflow-y: auto;
+  position: relative;
+}
+
+.sudoku-detail-body.is-editing {
+  padding: 0;
+  display: flex;
+  background: var(--background-primary);
+}
+
+.sudoku-inline-editor {
+  flex: 1;
+  width: 100%;
+  padding: 50px;
+  /* 与查看模式的 padding 保持一致，防止跳动 */
+  background: transparent !important;
+  border: none !important;
+  font-family: var(--font-text) !important;
+  font-size: 1.15em;
+  line-height: 1.7;
+  color: var(--text-normal);
+  resize: none;
+  outline: none;
+  tab-size: 4;
+  box-shadow: none !important;
+}
+
+.sudoku-detail-content {
+  /* 移除 max-width 和 margin: 0 auto，让内容靠左对齐 */
+  margin: 0;
+  font-size: 1.15em;
+  line-height: 1.7;
+  color: var(--text-normal);
+}
+
+@keyframes sudoku-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sudoku-detail-empty {
+  text-align: center;
+  margin-top: 15vh;
+  color: var(--text-faint);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.sudoku-detail-empty svg {
+  width: 64px;
+  height: 64px;
+  opacity: 0.2;
+}
+
+/* 移动端响应式布局 */
+.is-mobile .sudoku-viewer-layout {
+  flex-direction: column;
+}
+
+.is-mobile .sudoku-viewer-sidebar {
+  flex: 0 0 auto;
+  width: 100% !important;
+  padding: 12px 10px;
+  /* 大幅减小移动端顶部边距 */
+  border-right: none;
+  border-bottom: 1px solid var(--background-modifier-border);
+  gap: 12px;
+}
+
+.is-mobile .sudoku-viewer-resizer {
+  display: none !important;
+}
+
+.is-mobile .sudoku-viewer-grid {
+  width: 80%;
+  /* 增加移动端网格占比 */
+  max-width: 320px;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  gap: 10px;
+}
+
+.is-mobile .sudoku-sidebar-file-name {
+  font-size: 0.95em !important;
+  margin-bottom: 2px !important;
+}
+
+.is-mobile .sudoku-sidebar-meta-row {
+  gap: 8px !important;
+  transform: scale(0.9);
+}
+
+.is-mobile .sudoku-detail-header {
+  padding: 12px 16px;
+  flex-wrap: nowrap;
+  /* 手机端头部尽量不换行 */
+  gap: 8px;
+}
+
+.is-mobile .sudoku-detail-title h1 {
+  font-size: 1.1em !important;
+  white-space: nowrap;
+}
+
+.is-mobile .sudoku-detail-body {
+  padding: 16px;
+}
+
+/* ========== 节点式渲染 (Outliner Style View) ========== */
+
+.sudoku-outliner-view {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  /* 去除额外 padding */
+}
+
+/* 标题节点样式 */
+.outliner-title-node {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  /* 紧凑间距 */
+  padding: 0;
+  /* 移除 padding 消除顶部空白 */
+}
+
+.outliner-title-dot {
+  width: 10px;
+  height: 10px;
+  background: var(--interactive-accent);
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px var(--interactive-accent);
+}
+
+.outliner-title-text {
+  font-size: 1.45em;
+  font-weight: 800;
+  color: var(--text-normal);
+  letter-spacing: -0.01em;
+}
+
+/* 预览模式支持折叠 */
+.outliner-node {
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.outliner-node.is-hidden {
+  display: none;
+}
+
+.outliner-node-bullet {
+  cursor: pointer;
+  position: relative;
+}
+
+.outliner-node-bullet:hover {
+  background-color: var(--interactive-accent);
+  transform: scale(1.2);
+}
+
+.outliner-node-bullet.is-collapsed {
+  box-shadow: 0 0 0 2px var(--background-modifier-border);
+  background-color: var(--interactive-accent);
+}
+
+.outliner-node-bullet .node-toggle-icon {
+  position: absolute;
+  left: -14px;
+  top: 50%;
+  transform: translateY(-50%) rotate(0deg);
+  font-size: 8px;
+  color: var(--text-faint);
+  transition: transform 0.2s ease;
+  opacity: 0;
+}
+
+.outliner-node.has-children .node-toggle-icon {
+  opacity: 0.6;
+}
+
+.outliner-node.has-children:hover .node-toggle-icon {
+  opacity: 1;
+}
+
+.outliner-node-bullet.is-collapsed .node-toggle-icon {
+  transform: translateY(-50%) rotate(-90deg);
+}
+
+/* 常规节点样式 */
+.outliner-nodes-container {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--background-modifier-border);
+  margin-left: 4.5px;
+  /* 对齐标题圆点中心 */
+  padding-left: 12px;
+}
+
+.outliner-node {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 0;
+  position: relative;
+}
+
+.outliner-node-bullet {
+  width: 6px;
+  height: 6px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  margin-top: 10px;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.outliner-node-text {
+  font-size: 1.05em;
+  line-height: 1.6;
+  color: var(--text-muted);
+  transition: color 0.2s ease;
+}
+
+.outliner-node:hover .outliner-node-text {
+  color: var(--text-normal);
+}
+
+.outliner-node:hover .outliner-node-bullet {
+  background: var(--interactive-accent);
+  opacity: 1;
+}
+
+/* 移除冗余的编辑器背景样式，回归纯净 */
+
+.sudoku-detail-body.is-clickable {
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.sudoku-detail-body.is-clickable:hover {
+  background: var(--background-primary-alt);
+}
+
+/* ========== 查询详情表格 ========== */
+
 .supertag-qp-table {
   width: 100%;
   border-collapse: collapse;
