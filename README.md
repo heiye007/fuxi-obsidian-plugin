@@ -16,8 +16,10 @@
 *   **Tana 风格 Supertag**：支持结构化标签。
 *   **九宫格大纲编辑器 (Sudoku Outliner)**：
     *   **大纲编辑器**：支持快捷键（Enter、Tab、Shift+Tab）快速构建层级。
-    *   **支持折叠/展开**：支持在大纲中折叠/展开任意层级，状态实时同步且受持久化保护。
-    *   **仪表盘**：九宫格管理面板，通过迷你网格实时预览各格子标题与状态。
+    *   **支持折叠/展开**：支持在大纲中折叠/展开任意层级，状态实时同步。
+    *   **仪表盘**：九宫格管理面板，提供网格/列表双视图。
+    *   **个性化定制**：支持设置主题色、选择 Lucide 图标或直接注入原生 SVG 代码。
+    *   **模板化**：支持设置模板，实现一键式结构复用。
 *   **高性能 SQLite 驱动**：本地高性能数据库存储，确保在大规模笔记库下依然拥有极速的检索体验。
 *   **智能实时同步**：自动监听文件修改、重命名及删除事件，利用内容哈希（Content Hashing）实现毫秒级的增量更新。
 *   **透明的数据结构**：通过标准的 `files`, `blocks`, `tags` 关系表管理数据，方便二次开发与深度查询。
@@ -46,7 +48,7 @@
 | 欢迎进入微信群交流反馈 | 您的支持是我持续更新的动力 |
 
 **作者**: Heiye  
-**版本**: 0.2
+**版本**: 0.3.0
 
 ---
 
@@ -63,7 +65,9 @@ Fuxi is a block management and intelligence indexing system designed specificall
 *   **Sudoku Outliner**:
     *   **Outliner Editor**: Support for hierarchical editing with keyboard shortcuts (Enter, Tab, Shift+Tab).
     *   **Folding Support**: Collapse/Expand nodes at any level with persistent states.
-    *   **Dashboard**: A 3x3 management panel with real-time previews of cell titles and statuses.
+    *   **Dashboard**: A management panel with Grid and List view options.
+    *   **Personalization**: Assign theme colors and custom icons (Lucide or raw SVG).
+    *   **Templates**: Mark any Sudoku as a template for rapid structure reuse.
 *   **SQLite Powered**: High-performance local database ensures blazing-fast retrieval even in massive note collections.
 *   **Smart Real-time Sync**: Automatically listens for file modifications, renames, and deletions, utilizing Content Hashing for millisecond-speed incremental updates.
 *   **Transparent Data Schema**: Data is managed via standard relational tables (`files`, `blocks`, `tags`), making it extensible and easy to query.
@@ -94,5 +98,5 @@ Fuxi maintains a real-time mapping of your data in `fuxi.db` located in the plug
 ---
 
 **Author**: Heiye  
-**Version**: 0.2
+**Version**: 0.3.0
 
