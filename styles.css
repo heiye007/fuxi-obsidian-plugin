@@ -1016,7 +1016,8 @@
 .sudoku-mgmt-body {
   flex: 1;
   overflow-y: auto;
-  padding: 40px;
+  padding: 40px 40px 100px 40px;
+  position: relative;
 }
 
 /* 虚拟文件夹模块及卡片样式 */
@@ -3154,4 +3155,281 @@ pocket-watch:before {
   font-family: var(--font-monospace);
   margin-bottom: 8px;
   resize: vertical;
+}
+
+/* ========================================= */
+/* 批量操作与复选框 (Batch Operations) */
+/* ========================================= */
+.sudoku-item-checkbox-wrap {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.1s ease;
+  background: var(--background-primary);
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.sudoku-item.grid-style .sudoku-item-checkbox-wrap {
+  bottom: 8px;
+  right: 8px;
+  top: auto;
+  left: auto;
+}
+
+.sudoku-item.list-style .sudoku-item-checkbox-wrap {
+  position: relative;
+  top: 0;
+  left: 0;
+  margin-left: -8px;
+  opacity: 0;
+}
+
+.sudoku-item {
+  position: relative;
+}
+
+.sudoku-item:hover .sudoku-item-checkbox-wrap,
+.sudoku-item.is-selected .sudoku-item-checkbox-wrap {
+  opacity: 1;
+}
+
+.sudoku-item-checkbox {
+  margin: 0;
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+}
+
+.sudoku-item.is-selected {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: -2px;
+  background: var(--background-modifier-hover);
+}
+
+
+.sudoku-folder-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.sudoku-folder-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 6px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sudoku-folder-picker-item:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--interactive-accent);
+}
+
+/* ========================================= */
+/* 空状态 (Empty States) */
+/* ========================================= */
+.sudoku-empty-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 350px;
+  width: 100%;
+  padding: 40px;
+  background: var(--background-primary);
+  border-radius: 12px;
+  border: 2px dashed var(--background-modifier-border);
+  margin-top: 20px;
+}
+
+.sudoku-empty-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 320px;
+}
+
+.sudoku-empty-illustration {
+  margin-bottom: 24px;
+  opacity: 0.9;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.05));
+}
+
+.sudoku-empty-inner h3 {
+  margin: 0 0 8px 0;
+  font-size: 1.4em;
+  font-weight: 700;
+  color: var(--text-normal);
+}
+
+.sudoku-empty-inner p {
+  margin: 0 0 20px 0;
+  font-size: 0.95em;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.sudoku-empty-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.sudoku-empty-inner button {
+  padding: 8px 20px;
+  font-weight: 600;
+}
+
+/* ========================================= */
+/* 大纲拖拽 (Outliner Drag & Drop) */
+/* ========================================= */
+.node-drag-handle {
+  position: absolute;
+  left: -24px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  color: var(--text-faint);
+  opacity: 0;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.outliner-editor-node {
+  position: relative;
+}
+
+.outliner-editor-node:hover .node-drag-handle {
+  opacity: 0.6;
+}
+
+.node-drag-handle:hover {
+  opacity: 1 !important;
+  color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+  border-radius: 4px;
+}
+
+.outliner-editor-node.is-dragging {
+  opacity: 0.4;
+  background: var(--background-modifier-hover);
+}
+
+.node-drop-indicator {
+  height: 2px;
+  background: var(--interactive-accent);
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  pointer-events: none;
+  box-shadow: 0 0 4px var(--interactive-accent);
+}
+
+/* ========================================= */
+/* 状态指示器 (Status Indicators) */
+/* ========================================= */
+.sudoku-editor-status-bar {
+  position: absolute;
+  bottom: 12px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-faint);
+  pointer-events: none;
+  transition: all 0.3s ease;
+  z-index: 30;
+  background: var(--background-primary);
+  padding: 2px 8px;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+}
+
+.sudoku-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.sudoku-status-dot.is-saving {
+  background: #f1c40f;
+  box-shadow: 0 0 6px #f1c40f;
+  animation: pulse 1.5s infinite;
+}
+
+.sudoku-status-dot.is-synced {
+  background: #2ecc71;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 0.4;
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0.4;
+  }
+}
+
+/* ========================================= */
+/* 管理面板拖拽排序 (Management Drag & Drop) */
+/* ========================================= */
+.sudoku-item.is-dragging {
+  opacity: 0.4 !important;
+  cursor: grabbing !important;
+}
+
+.sudoku-item.folder-card.drag-over {
+  background: var(--background-modifier-hover);
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px var(--interactive-accent);
+}
+
+.mgmt-drop-indicator {
+  position: absolute;
+  background: var(--interactive-accent);
+  box-shadow: 0 0 6px var(--interactive-accent);
+  z-index: 100;
+  pointer-events: none;
+}
+
+/* 列表模式下的指示器 (水平线) */
+.sudoku-item.list-style .mgmt-drop-indicator {
+  left: 0;
+  right: 0;
+  height: 2px;
+}
+
+/* 网格模式下的指示器 (垂直线) */
+.sudoku-item.grid-style .mgmt-drop-indicator {
+  top: 0;
+  bottom: 0;
+  width: 4px;
 }

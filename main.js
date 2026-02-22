@@ -1,4 +1,4 @@
-const { Plugin, Notice, Modal, Setting, TFile, MarkdownView, ItemView, setIcon, Menu } = require('obsidian');
+const { Plugin, Notice, Modal, Setting, TFile, MarkdownView, ItemView, setIcon, Menu, MarkdownRenderer } = require('obsidian');
 
 const SUDOKU_VIEW_TYPE = "sudoku-grid-view";
 const SUDOKU_MGMT_VIEW_TYPE = "sudoku-mgmt-view";
@@ -270,6 +270,7 @@ class BlockSyncEngine {
       theme_color TEXT,
       icon TEXT,
       is_template INTEGER DEFAULT 0,
+      pos INTEGER DEFAULT 0,
       created_at INTEGER,
       modified_at INTEGER,
       FOREIGN KEY (folder_uuid) REFERENCES sudoku_folders(uuid) ON DELETE SET NULL
@@ -283,6 +284,7 @@ class BlockSyncEngine {
       { name: 'theme_color', type: 'TEXT' },
       { name: 'icon', type: 'TEXT' },
       { name: 'is_template', type: 'INTEGER DEFAULT 0' },
+      { name: 'pos', type: 'INTEGER DEFAULT 0' },
       { name: 'created_at', type: 'INTEGER' },
       { name: 'modified_at', type: 'INTEGER' }
     ];
@@ -396,7 +398,7 @@ class BlockSyncEngine {
       const searchStr = `%${filter}%`;
       params.push(searchStr, searchStr, searchStr);
     }
-    sql += ` ORDER BY is_pinned DESC, pinned_at DESC, modified_at DESC, name ASC`;
+    sql += ` ORDER BY is_pinned DESC, pos ASC, pinned_at DESC, modified_at DESC, name ASC`;
 
     const stmt = this.db.prepare(sql);
     if (params.length > 0) stmt.bind(params);
@@ -568,6 +570,18 @@ class BlockSyncEngine {
   moveToFolder(sudoku_uuid, folder_uuid) {
     if (!this.db) return;
     this.db.run('UPDATE sudokus SET folder_uuid = ? WHERE uuid = ?', [folder_uuid, sudoku_uuid]);
+    this._debouncedSave();
+  }
+
+  updateSudokuPos(uuid, pos) {
+    if (!this.db) return;
+    this.db.run('UPDATE sudokus SET pos = ? WHERE uuid = ?', [pos, uuid]);
+    this._debouncedSave();
+  }
+
+  updateFolderPos(uuid, pos) {
+    if (!this.db) return;
+    this.db.run('UPDATE sudoku_folders SET pos = ? WHERE uuid = ?', [pos, uuid]);
     this._debouncedSave();
   }
 
@@ -2111,6 +2125,43 @@ class SudokuFolderDeleteConfirmModal extends Modal {
   }
 }
 
+class SudokuBatchMoveModal extends Modal {
+  constructor(app, plugin, uuids, onSuccess) {
+    super(app);
+    this.plugin = plugin;
+    this.uuids = uuids;
+    this.onSuccess = onSuccess;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.createEl('h3', { text: `将 ${this.uuids.size} 个项目移动到...` });
+
+    const folders = this.plugin._syncEngine.getFolders();
+    const list = contentEl.createDiv({ cls: 'sudoku-folder-picker-list' });
+
+    // Add "Uncategorized" option
+    const uncatItem = list.createDiv({ cls: 'sudoku-folder-picker-item' });
+    setIcon(uncatItem.createDiv({ cls: 'sudoku-folder-picker-icon' }), 'folder');
+    uncatItem.createSpan({ text: '未分类 (顶级)' });
+    uncatItem.onclick = () => {
+      this.uuids.forEach(uuid => this.plugin._syncEngine.moveToFolder(uuid, null));
+      this.onSuccess();
+      this.close();
+    };
+
+    folders.forEach(f => {
+      const item = list.createDiv({ cls: 'sudoku-folder-picker-item' });
+      setIcon(item.createDiv({ cls: 'sudoku-folder-picker-icon' }), 'folder');
+      item.createSpan({ text: f.name });
+      item.onclick = () => {
+        this.uuids.forEach(uuid => this.plugin._syncEngine.moveToFolder(uuid, f.uuid));
+        this.onSuccess();
+        this.close();
+      };
+    });
+  }
+}
+
 class SudokuMgmtView extends ItemView {
   constructor(leaf, plugin) {
     super(leaf);
@@ -2118,6 +2169,8 @@ class SudokuMgmtView extends ItemView {
     this.viewMode = 'grid'; // 'grid' or 'list'
     this.currentFolderId = null;
     this.activeTags = new Set();
+    this.selectedUuids = new Set();
+    this._draggingInfo = null;
   }
 
   getViewType() { return SUDOKU_MGMT_VIEW_TYPE; }
@@ -2200,6 +2253,95 @@ class SudokuMgmtView extends ItemView {
     this._renderItems(initialFilter);
   }
 
+  _showMgmtDropIndicator(el, isBottom) {
+    this._removeMgmtDropIndicators();
+    const indicator = document.createElement('div');
+    indicator.className = 'mgmt-drop-indicator';
+    if (this.viewMode === 'list') {
+      if (isBottom) {
+        el.appendChild(indicator);
+        indicator.style.bottom = '-2px';
+      } else {
+        el.prepend(indicator);
+        indicator.style.top = '-2px';
+      }
+    } else {
+      if (isBottom) {
+        el.appendChild(indicator);
+        indicator.style.right = '-2px';
+      } else {
+        el.prepend(indicator);
+        indicator.style.left = '-2px';
+      }
+    }
+  }
+
+  _removeMgmtDropIndicators() {
+    this.contentEl.querySelectorAll('.mgmt-drop-indicator').forEach(el => el.remove());
+  }
+
+  _onReorderDrop(type, sourceUuid, targetUuid, isAfter, list, filterValue) {
+    if (sourceUuid === targetUuid) return;
+
+    // 重新计算所有项目的 pos
+    const newList = [...list];
+    const sourceIdx = newList.findIndex(x => (x.uuid || x.id) === sourceUuid);
+    const item = newList.splice(sourceIdx, 1)[0];
+
+    let targetIdx = newList.findIndex(x => (x.uuid || x.id) === targetUuid);
+    if (isAfter) targetIdx++;
+    newList.splice(targetIdx, 0, item);
+
+    // 批量更新数据库
+    newList.forEach((x, i) => {
+      if (type === 'folder') {
+        this.plugin._syncEngine.updateFolderPos(x.uuid, i);
+      } else {
+        this.plugin._syncEngine.updateSudokuPos(x.uuid, i);
+      }
+    });
+
+    this._renderItems(filterValue);
+  }
+
+
+  _setupBackgroundContextMenu(bodyEl, listEl, filterValue) {
+    const handleContextMenu = (e) => {
+      if (e.target !== bodyEl && e.target !== listEl) return;
+      if (this.selectedUuids.size === 0) return;
+
+      e.preventDefault();
+      const menu = new Menu();
+      menu.addItem(item => {
+        item.setTitle(`移动选中的 ${this.selectedUuids.size} 项...`)
+          .setIcon('folder-input')
+          .onClick(() => {
+            new SudokuBatchMoveModal(this.app, this.plugin, this.selectedUuids, () => {
+              new Notice(`成功移动 ${this.selectedUuids.size} 项`);
+              this.selectedUuids.clear();
+              this._renderItems(filterValue);
+            }).open();
+          });
+      });
+      menu.addItem(item => {
+        item.setTitle(`删除选中的 ${this.selectedUuids.size} 项`)
+          .setIcon('trash-2')
+          .onClick(() => this._deleteBatch(filterValue));
+      });
+      menu.addSeparator();
+      menu.addItem(item => {
+        item.setTitle('取消选择')
+          .onClick(() => {
+            this.selectedUuids.clear();
+            this._renderItems(filterValue);
+          });
+      });
+      menu.showAtMouseEvent(e);
+    };
+
+    bodyEl.addEventListener('contextmenu', handleContextMenu);
+  }
+
   async _renderItems(filterValue = '') {
     const { contentEl } = this;
     contentEl.findAll('.sudoku-mgmt-body').forEach(el => el.remove());
@@ -2255,6 +2397,7 @@ class SudokuMgmtView extends ItemView {
 
       backBtn.onclick = () => {
         this.currentFolderId = null;
+        this.selectedUuids.clear();
         this._renderItems(filterValue);
       };
 
@@ -2264,9 +2407,9 @@ class SudokuMgmtView extends ItemView {
       breadcrumb.addEventListener('drop', (e) => {
         e.preventDefault();
         breadcrumb.removeClass('drag-over');
-        const sudokuUuid = e.dataTransfer.getData('text/plain');
-        if (sudokuUuid) {
-          this.plugin._syncEngine.moveToFolder(sudokuUuid, null);
+        const sourceUuid = e.dataTransfer.getData('source-uuid');
+        if (sourceUuid) {
+          this.plugin._syncEngine.moveToFolder(sourceUuid, null);
           this._renderItems(filterValue);
         }
       });
@@ -2340,9 +2483,12 @@ class SudokuMgmtView extends ItemView {
       }
     }
 
+
     const listContainer = bodyContainer.createDiv({
       cls: `sudoku-container ${this.viewMode === 'grid' ? 'grid-view' : 'list-view'}`
     });
+
+    this._setupBackgroundContextMenu(bodyContainer, listContainer, filterValue);
 
     let itemsToRender = [];
     let foldersToRender = [];
@@ -2360,12 +2506,40 @@ class SudokuMgmtView extends ItemView {
 
     if (itemsToRender.length === 0 && foldersToRender.length === 0) {
       const empty = listContainer.createDiv({ cls: 'sudoku-empty-container' });
+      const inner = empty.createDiv({ cls: 'sudoku-empty-inner' });
+
+      const illustration = inner.createDiv({ cls: 'sudoku-empty-illustration' });
       if (isGlobalSearch) {
-        setIcon(empty.createDiv(), 'search-x');
-        empty.createEl('p', { text: '没有找到匹配的九宫格。' });
+        illustration.innerHTML = `<svg viewBox="0 0 200 200" width="160" height="160">
+          <circle cx="100" cy="100" r="80" fill="var(--background-secondary)" />
+          <path d="M70 70 L130 130 M130 70 L70 130" stroke="var(--text-muted)" stroke-width="8" stroke-linecap="round" opacity="0.4" />
+          <circle cx="90" cy="90" r="30" stroke="var(--interactive-accent)" stroke-width="6" fill="none" />
+          <line x1="112" y1="112" x2="135" y2="135" stroke="var(--interactive-accent)" stroke-width="6" stroke-linecap="round" />
+        </svg>`;
+        inner.createEl('h3', { text: '未找到匹配结果' });
+        inner.createEl('p', { text: `没有找到包含 "${filterValue}" 的九宫格。` });
+        const clearBtn = inner.createEl('button', { cls: 'mod-cta', text: '清除搜索' });
+        clearBtn.onclick = () => {
+          const searchInput = this.contentEl.querySelector('.sudoku-search-input');
+          if (searchInput) searchInput.value = '';
+          this._renderItems('');
+        };
       } else {
-        setIcon(empty.createDiv(), 'folder-open');
-        empty.createEl('p', { text: '这里空空如也，点击右上角新建吧。' });
+        illustration.innerHTML = `<svg viewBox="0 0 200 200" width="160" height="160">
+          <rect x="40" y="40" width="120" height="120" rx="15" fill="var(--background-secondary)" />
+          <rect x="65" y="65" width="25" height="25" rx="4" fill="var(--background-modifier-border)" />
+          <rect x="105" y="65" width="25" height="25" rx="4" fill="var(--background-modifier-border)" />
+          <rect x="65" y="105" width="25" height="25" rx="4" fill="var(--background-modifier-border)" />
+          <rect x="105" y="105" width="25" height="25" rx="4" fill="var(--interactive-accent)" opacity="0.6" />
+          <path d="M140 140 L170 170" stroke="var(--interactive-accent)" stroke-width="8" stroke-linecap="round" />
+          <circle cx="170" cy="170" r="10" fill="var(--interactive-accent)" />
+        </svg>`;
+        inner.createEl('h3', { text: this.currentFolderId ? '文件夹为空' : '开启您的思维九宫格' });
+        inner.createEl('p', { text: '通过九宫格结构化您的思考，点击上方按钮开始创建。' });
+
+        const actions = inner.createDiv({ cls: 'sudoku-empty-actions' });
+        const createBtn = actions.createEl('button', { cls: 'mod-cta', text: '新建九宫格' });
+        createBtn.onclick = () => this._createNew();
       }
       return;
     }
@@ -2420,6 +2594,57 @@ class SudokuMgmtView extends ItemView {
         }
         this._renderItems();
       };
+
+      // Folder Sorting
+      folderCard.setAttribute('draggable', 'true');
+      folderCard.addEventListener('dragstart', (e) => {
+        this._draggingInfo = { type: 'folder', uuid: folder.uuid };
+        folderCard.addClass('is-dragging');
+      });
+      folderCard.addEventListener('dragend', () => {
+        folderCard.removeClass('is-dragging');
+        this._draggingInfo = null;
+        this._removeMgmtDropIndicators();
+      });
+      folderCard.addEventListener('dragover', (e) => {
+        if (!this._draggingInfo) return;
+        const sourceType = this._draggingInfo.type;
+        if (sourceType === 'folder') {
+          e.preventDefault();
+          const rect = folderCard.getBoundingClientRect();
+          const isAfter = this.viewMode === 'grid' ? e.clientX > rect.left + rect.width / 2 : e.clientY > rect.top + rect.height / 2;
+          this._showMgmtDropIndicator(folderCard, isAfter);
+        } else if (sourceType === 'sudoku') {
+          e.preventDefault();
+          folderCard.addClass('drag-over');
+          this._removeMgmtDropIndicators();
+        }
+      });
+      folderCard.addEventListener('dragleave', () => {
+        folderCard.removeClass('drag-over');
+        this._removeMgmtDropIndicators();
+      });
+      folderCard.addEventListener('drop', (e) => {
+        if (!this._draggingInfo) return;
+        const sourceType = this._draggingInfo.type;
+        const sourceUuid = this._draggingInfo.uuid;
+
+        if (sourceType === 'folder') {
+          e.preventDefault();
+          this._removeMgmtDropIndicators();
+          const rect = folderCard.getBoundingClientRect();
+          const isAfter = this.viewMode === 'grid' ? e.clientX > rect.left + rect.width / 2 : e.clientY > rect.top + rect.height / 2;
+          this._onReorderDrop('folder', sourceUuid, folder.uuid, isAfter, foldersToRender, filterValue);
+        } else if (sourceType === 'sudoku') {
+          e.preventDefault();
+          folderCard.removeClass('drag-over');
+          if (sourceUuid) {
+            this.plugin._syncEngine.moveToFolder(sourceUuid, folder.uuid);
+            this._renderItems(filterValue);
+          }
+        }
+        this._draggingInfo = null;
+      });
     }
 
     // 渲染九宫格项目
@@ -2440,12 +2665,40 @@ class SudokuMgmtView extends ItemView {
 
         itemEl.setAttribute('draggable', 'true');
         itemEl.addEventListener('dragstart', (e) => {
-          e.dataTransfer.setData('text/plain', sudoku.uuid);
-          e.dataTransfer.effectAllowed = 'move';
-          itemEl.style.opacity = '0.4';
+          this._draggingInfo = { type: 'sudoku', uuid: sudoku.uuid };
+          e.dataTransfer.setData('source-type', 'sudoku');
+          e.dataTransfer.setData('source-uuid', sudoku.uuid);
+          itemEl.addClass('is-dragging');
         });
         itemEl.addEventListener('dragend', () => {
           itemEl.style.opacity = '1';
+          itemEl.removeClass('is-dragging');
+          this._draggingInfo = null;
+          this._removeMgmtDropIndicators();
+        });
+
+        itemEl.addEventListener('dragover', (e) => {
+          if (!this._draggingInfo) return;
+          if (this._draggingInfo.type === 'sudoku') {
+            e.preventDefault();
+            const rect = itemEl.getBoundingClientRect();
+            const isAfter = this.viewMode === 'grid' ? e.clientX > rect.left + rect.width / 2 : e.clientY > rect.top + rect.height / 2;
+            this._showMgmtDropIndicator(itemEl, isAfter);
+          }
+        });
+
+        itemEl.addEventListener('drop', (e) => {
+          if (!this._draggingInfo) return;
+          const sourceType = this._draggingInfo.type;
+          if (sourceType === 'sudoku') {
+            e.preventDefault();
+            this._removeMgmtDropIndicators();
+            const sourceUuid = this._draggingInfo.uuid;
+            const rect = itemEl.getBoundingClientRect();
+            const isAfter = this.viewMode === 'grid' ? e.clientX > rect.left + rect.width / 2 : e.clientY > rect.top + rect.height / 2;
+            this._onReorderDrop('sudoku', sourceUuid, sudoku.uuid, isAfter, itemsToRender, filterValue);
+          }
+          this._draggingInfo = null;
         });
 
       } catch (e) {
@@ -2455,9 +2708,26 @@ class SudokuMgmtView extends ItemView {
   }
 
   _renderGridItem(container, data, filePath, fileName, sudoku = null, tags = []) {
+    const isSelected = sudoku && this.selectedUuids.has(sudoku.uuid);
     const item = container.createDiv({
-      cls: `sudoku-item grid-style ${sudoku?.is_pinned ? 'is-pinned' : ''} ${sudoku?.is_template ? 'is-template-card' : ''}`
+      cls: `sudoku-item grid-style ${sudoku?.is_pinned ? 'is-pinned' : ''} ${sudoku?.is_template ? 'is-template-card' : ''} ${isSelected ? 'is-selected' : ''}`
     });
+
+    if (sudoku) {
+      const cbWrap = item.createDiv({ cls: 'sudoku-item-checkbox-wrap' });
+      const cb = cbWrap.createEl('input', { type: 'checkbox', cls: 'sudoku-item-checkbox' });
+      cb.checked = isSelected;
+      cb.onclick = (e) => {
+        e.stopPropagation();
+        if (cb.checked) {
+          this.selectedUuids.add(sudoku.uuid);
+          item.addClass('is-selected');
+        } else {
+          this.selectedUuids.delete(sudoku.uuid);
+          item.removeClass('is-selected');
+        }
+      };
+    }
 
     if (sudoku?.theme_color) {
       item.style.borderColor = sudoku.theme_color;
@@ -2592,6 +2862,10 @@ class SudokuMgmtView extends ItemView {
     setIcon(renameBtn, 'pencil');
     renameBtn.onclick = (e) => { e.stopPropagation(); this._rename(filePath, data); };
 
+    const duplicateBtn = actions.createEl('button', { cls: 'sudoku-action-btn', attr: { 'aria-label': '复制' } });
+    setIcon(duplicateBtn, 'copy');
+    duplicateBtn.onclick = (e) => { e.stopPropagation(); this._duplicate(sudoku, data); };
+
     const deleteBtn = actions.createEl('button', { cls: 'sudoku-action-btn del', attr: { 'aria-label': '删除' } });
     setIcon(deleteBtn, 'trash-2');
     deleteBtn.onclick = (e) => { e.stopPropagation(); this._delete(filePath, data.name); };
@@ -2611,13 +2885,34 @@ class SudokuMgmtView extends ItemView {
       if (this.plugin._syncEngine) this.plugin._syncEngine.logAccess(sudoku.uuid);
       this.plugin.openSudokuView(filePath);
     };
+
+    item.oncontextmenu = (e) => {
+      this._onSudokuContextMenu(e, sudoku, data, filePath);
+    };
     return item;
   }
 
   _renderListItem(container, data, filePath, fileName, sudoku = null, tags = []) {
+    const isSelected = sudoku && this.selectedUuids.has(sudoku.uuid);
     const item = container.createDiv({
-      cls: `sudoku-item list-style ${sudoku?.is_pinned ? 'is-pinned' : ''} ${sudoku?.is_template ? 'is-template-card' : ''}`
+      cls: `sudoku-item list-style ${sudoku?.is_pinned ? 'is-pinned' : ''} ${sudoku?.is_template ? 'is-template-card' : ''} ${isSelected ? 'is-selected' : ''}`
     });
+
+    if (sudoku) {
+      const cbWrap = item.createDiv({ cls: 'sudoku-item-checkbox-wrap' });
+      const cb = cbWrap.createEl('input', { type: 'checkbox', cls: 'sudoku-item-checkbox' });
+      cb.checked = isSelected;
+      cb.onclick = (e) => {
+        e.stopPropagation();
+        if (cb.checked) {
+          this.selectedUuids.add(sudoku.uuid);
+          item.addClass('is-selected');
+        } else {
+          this.selectedUuids.delete(sudoku.uuid);
+          item.removeClass('is-selected');
+        }
+      };
+    }
 
     if (sudoku?.theme_color) {
       item.style.borderLeftColor = sudoku.theme_color;
@@ -2736,6 +3031,10 @@ class SudokuMgmtView extends ItemView {
     setIcon(renameBtn, 'pencil');
     renameBtn.onclick = (e) => { e.stopPropagation(); this._rename(filePath, data); };
 
+    const duplicateBtn = actions.createEl('button', { cls: 'sudoku-action-btn', attr: { 'aria-label': '复制' } });
+    setIcon(duplicateBtn, 'copy');
+    duplicateBtn.onclick = (e) => { e.stopPropagation(); this._duplicate(sudoku, data); };
+
     const deleteBtn = actions.createEl('button', { cls: 'sudoku-action-btn del', attr: { 'aria-label': '删除' } });
     setIcon(deleteBtn, 'trash-2');
     deleteBtn.onclick = (e) => { e.stopPropagation(); this._delete(filePath, data.name); };
@@ -2755,6 +3054,10 @@ class SudokuMgmtView extends ItemView {
     item.onclick = () => {
       if (this.plugin._syncEngine) this.plugin._syncEngine.logAccess(sudoku.uuid);
       this.plugin.openSudokuView(filePath);
+    };
+
+    item.oncontextmenu = (e) => {
+      this._onSudokuContextMenu(e, sudoku, data, filePath);
     };
     return item;
   }
@@ -2817,6 +3120,88 @@ class SudokuMgmtView extends ItemView {
     menu.showAtMouseEvent(e);
   }
 
+  _onSudokuContextMenu(e, sudoku, data, filePath) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const menu = new Menu();
+
+    menu.addItem(item => {
+      item.setTitle(sudoku.is_pinned ? '取消置顶' : '置顶')
+        .setIcon('star')
+        .onClick(() => {
+          this.plugin._syncEngine.togglePin(sudoku.uuid);
+          this._render();
+        });
+    });
+
+    menu.addSeparator();
+
+    menu.addItem(item => {
+      item.setTitle('标签设置')
+        .setIcon('tag')
+        .onClick(() => this._editTags(sudoku.uuid, data.name));
+    });
+
+    menu.addItem(item => {
+      item.setTitle('重命名')
+        .setIcon('pencil')
+        .onClick(() => this._rename(filePath, data));
+    });
+
+    menu.addItem(item => {
+      item.setTitle('创建副本 (复制)')
+        .setIcon('copy')
+        .onClick(() => this._duplicate(sudoku, data));
+    });
+
+    menu.addItem(item => {
+      item.setTitle('视觉设置 (颜色/图标)')
+        .setIcon('settings')
+        .onClick(() => {
+          new SudokuVisualSettingsModal(this.plugin, sudoku, (vals) => {
+            this.plugin._syncEngine.setThemeColor(sudoku.uuid, vals.theme_color);
+            this.plugin._syncEngine.setIcon(sudoku.uuid, vals.icon);
+            this.plugin._syncEngine.setAsTemplate(sudoku.uuid, vals.is_template);
+            this._render();
+          }).open();
+        });
+    });
+
+    menu.addSeparator();
+
+    menu.addItem(item => {
+      item.setTitle('导出为 HTML')
+        .setIcon('download')
+        .onClick(() => {
+          // 借用 SudokuGridView 的导出逻辑，我们需要实例化一个临时的视图或者直接调用逻辑
+          // 为了简单起见，我这里暂不重复实现，用户可以打开后再导出，
+          // 但既然 UX 计划里有，我之后可以考虑把导出逻辑静态化
+          new Notice('请打开九宫格后在其详细页点击下载图标导出。');
+        });
+    });
+
+    menu.addItem(item => {
+      item.setTitle('复制标识符 (UUID)')
+        .setIcon('fingerprint')
+        .onClick(() => {
+          navigator.clipboard.writeText(sudoku.uuid);
+          new Notice('UUID 已复制到剪贴板');
+        });
+    });
+
+    menu.addSeparator();
+
+    menu.addItem(item => {
+      item.setTitle('删除')
+        .setIcon('trash-2')
+        .setWarning(true)
+        .onClick(() => this._delete(filePath, data.name));
+    });
+
+    menu.showAtMouseEvent(e);
+  }
+
   _createFolder() {
     new SudokuInputDialog(this.app, '新建文件夹', '', (name) => {
       if (!name) return;
@@ -2840,7 +3225,30 @@ class SudokuMgmtView extends ItemView {
   _deleteFolder(uuid, name) {
     new SudokuFolderDeleteConfirmModal(this.app, name, () => {
       this.plugin._syncEngine.deleteFolder(uuid);
+      if (this.currentFolderId === uuid) this.currentFolderId = null;
       this._render();
+    }).open();
+  }
+
+  _deleteBatch(filterValue) {
+    new SudokuDeleteConfirmModal(this.app, `${this.selectedUuids.size} 个选中九宫格 (批量操作无法撤销)`, async () => {
+      const jgFolder = `${this.plugin.manifest.dir}/.jg`;
+
+      for (const uuid of this.selectedUuids) {
+        const filePath = `${jgFolder}/${uuid}.jg`;
+        try {
+          if (await this.app.vault.adapter.exists(filePath)) {
+            await this.app.vault.adapter.remove(filePath);
+          }
+          this.plugin._syncEngine.deleteSudoku(uuid);
+        } catch (e) {
+          console.error("Batch delete error for " + uuid, e);
+        }
+      }
+
+      new Notice(`已批量删除 ${this.selectedUuids.size} 个九宫格`);
+      this.selectedUuids.clear();
+      this._renderItems(filterValue);
     }).open();
   }
 
@@ -2942,6 +3350,38 @@ class SudokuMgmtView extends ItemView {
     }).open();
   }
 
+  async _duplicate(sudoku, data) {
+    const newName = `${data.name} 副本`;
+    const uuid = crypto.randomUUID();
+    const jgFolder = `${this.plugin.manifest.dir}/.jg`;
+    const newFilePath = `${jgFolder}/${uuid}.jg`;
+    const adapter = this.app.vault.adapter;
+
+    let newData = JSON.parse(JSON.stringify(data));
+    newData.name = newName;
+
+    await adapter.write(newFilePath, JSON.stringify(newData, null, 2));
+
+    if (this.plugin._syncEngine) {
+      this.plugin._syncEngine.syncSudoku(uuid, newName, sudoku?.folder_uuid || null, newData);
+
+      if (sudoku) {
+        if (sudoku.theme_color) this.plugin._syncEngine.setThemeColor(uuid, sudoku.theme_color);
+        if (sudoku.icon) this.plugin._syncEngine.setIcon(uuid, sudoku.icon);
+
+        if (sudoku.uuid) {
+          const tags = this.plugin._syncEngine.getSudokuTags()[sudoku.uuid] || [];
+          if (tags.length > 0) {
+            this.plugin._syncEngine.setSudokuTags(uuid, tags);
+          }
+        }
+      }
+    }
+
+    new Notice(`已复制为 "${newName}"`);
+    await this._render();
+  }
+
   async refresh() {
     await this._render();
   }
@@ -2967,6 +3407,7 @@ class SudokuGridView extends ItemView {
     this._savePromise = Promise.resolve();
     this.nodes = [];
     this._collapsedIndices = new Set(); // 记录折叠的节点索引
+    this.addAction('download', '导出为 HTML', () => { this._exportToHtml(); });
   }
 
   getViewType() { return SUDOKU_VIEW_TYPE; }
@@ -3038,14 +3479,26 @@ class SudokuGridView extends ItemView {
     this.sidebarEl.style.flex = '0 0 auto'; // 强制尊重宽度，不被挤压
 
     // 渲染标题和日期 (顶部)
-    this.sidebarEl.createDiv({ text: this.data.name, cls: 'sudoku-viewer-name' });
-    const meta = this.sidebarEl.createDiv({ cls: 'sudoku-viewer-meta' });
+    const headerRow = this.sidebarEl.createDiv({ cls: 'sudoku-viewer-header-row' });
+    headerRow.style.display = 'flex';
+    headerRow.style.justifyContent = 'space-between';
+    headerRow.style.alignItems = 'flex-start';
+
+    const titleWrap = headerRow.createDiv();
+    titleWrap.createDiv({ text: this.data.name, cls: 'sudoku-viewer-name' });
+
+    const meta = titleWrap.createDiv({ cls: 'sudoku-viewer-meta' });
     const uuid = this.filePath.split('/').pop().replace('.jg', '');
     const sudoku = this.plugin._syncEngine?.getSudokus().find(s => s.uuid === uuid);
     const createTime = sudoku?.created_at
       ? new Date(sudoku.created_at * 1000).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
       : '未知时间';
     meta.createEl('span', { text: createTime, cls: 'sudoku-viewer-date' });
+
+    const actionsWrap = headerRow.createDiv({ cls: 'sudoku-viewer-header-actions' });
+    const exportBtn = actionsWrap.createEl('button', { cls: 'sudoku-action-btn', attr: { 'aria-label': '导出为 HTML', 'style': 'margin-top: 4px;' } });
+    setIcon(exportBtn, 'download');
+    exportBtn.onclick = () => this._exportToHtml();
 
     this._renderSidebar(this.sidebarEl);
 
@@ -3152,6 +3605,7 @@ class SudokuGridView extends ItemView {
       const stats = await this.app.vault.adapter.stat(this.filePath);
       this.plugin._syncEngine.syncSudoku(uuid, this.data.name, stats, this.data);
     }
+    this._updateStatus('synced');
   }
 
   async _saveCurrentEdits() {
@@ -3333,6 +3787,9 @@ class SudokuGridView extends ItemView {
       }
       this._skipInitialFocus = false; // 重置标记
 
+      this.statusBar = container.createDiv({ cls: 'sudoku-editor-status-bar' });
+      this._updateStatus('synced');
+
     } else {
       contentBody.addClass('is-clickable');
       contentBody.setAttribute('aria-label', '双击进入编辑模式');
@@ -3451,13 +3908,76 @@ class SudokuGridView extends ItemView {
     return this.nodes.map(node => '\t'.repeat(node.level) + node.text).join('\n');
   }
 
+  _moveNode(from, to, moveAfter) {
+    if (from === to) return;
+    const item = this.nodes[from];
+    this.nodes.splice(from, 1);
+
+    let target = to;
+    if (from < to) target--;
+    if (moveAfter) target++;
+
+    this.nodes.splice(target, 0, item);
+    this._skipInitialFocus = true;
+    this._renderDetail(this.mainEl);
+    this._saveCurrentEdits();
+  }
+
+  _showDropIndicator(el, isBottom) {
+    this._removeDropIndicators();
+    const indicator = document.createElement('div');
+    indicator.className = 'node-drop-indicator';
+    if (isBottom) {
+      el.appendChild(indicator);
+      indicator.style.bottom = '-2px';
+    } else {
+      el.prepend(indicator);
+      indicator.style.top = '-2px';
+    }
+  }
+
+  _removeDropIndicators() {
+    this.nodesContainer?.querySelectorAll('.node-drop-indicator').forEach(el => el.remove());
+  }
+
   _renderEditableNode(parent, node, index) {
     const nodeEl = parent.createDiv({
       cls: 'outliner-editor-node',
       attr: { 'data-level': node.level + 1 }
     });
-    if (node.hasChildren) nodeEl.addClass('has-children');
     if (node.isCollapsed) nodeEl.addClass('is-collapsed');
+
+    const dragHandle = nodeEl.createDiv({ cls: 'node-drag-handle', attr: { draggable: 'true' } });
+    setIcon(dragHandle, 'grip-vertical');
+
+    dragHandle.ondragstart = (e) => {
+      e.dataTransfer.setData('text/plain', index.toString());
+      nodeEl.addClass('is-dragging');
+    };
+
+    dragHandle.ondragend = () => {
+      nodeEl.removeClass('is-dragging');
+      this._removeDropIndicators();
+    };
+
+    nodeEl.ondragover = (e) => {
+      e.preventDefault();
+      const rect = nodeEl.getBoundingClientRect();
+      const moveAfter = e.clientY > rect.top + rect.height / 2;
+      this._showDropIndicator(nodeEl, moveAfter);
+    };
+
+    nodeEl.ondragleave = () => {
+      this._removeDropIndicators();
+    };
+
+    nodeEl.ondrop = (e) => {
+      e.preventDefault();
+      const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
+      const rect = nodeEl.getBoundingClientRect();
+      const moveAfter = e.clientY > rect.top + rect.height / 2;
+      this._moveNode(fromIndex, index, moveAfter);
+    };
 
     const bulletWrap = nodeEl.createDiv({ cls: 'node-bullet-wrap' });
     const toggleIcon = bulletWrap.createDiv({ cls: 'node-toggle-icon' });
@@ -3571,6 +4091,343 @@ class SudokuGridView extends ItemView {
         this._renderDetail(this.mainEl);
       }
     };
+  }
+
+  async _exportToHtml() {
+    if (!this.data) return;
+
+    // 完整的 CSS 样式定义
+    const css = `
+      :root {
+        --bg-body: #f8f9fa;
+        --bg-card: #ffffff;
+        --border-color: #e5e7eb;
+        --text-main: #111827;
+        --text-muted: #6b7280;
+        --primary: #4f46e5;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 50px 20px;
+        background-color: var(--bg-body);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        color: var(--text-main);
+        line-height: 1.6;
+      }
+      .layout-container {
+        display: flex;
+        flex-direction: row;
+        gap: 40px;
+        max-width: 1200px;
+        margin: 0 auto;
+        align-items: flex-start;
+      }
+      .sidebar {
+        flex: 0 0 340px;
+        width: 340px;
+        min-width: 340px;
+        max-width: 340px;
+        position: sticky;
+        top: 50px;
+      }
+      .main-title {
+        font-size: 32px;
+        font-weight: 800;
+        margin-top: 0;
+        margin-bottom: 30px;
+        text-align: center;
+        letter-spacing: -0.5px;
+        color: var(--text-main);
+      }
+      .grid-3x3 {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .grid-cell {
+        aspect-ratio: 1;
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: left;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-main);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+        transition: all 0.2s ease;
+        text-decoration: none;
+        cursor: pointer;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .grid-cell-text {
+        display: -webkit-box;
+        -webkit-line-clamp: 4;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        word-wrap: break-word;
+        word-break: break-all;
+        width: 100%;
+        max-height: 100%;
+      }
+      .grid-cell:hover {
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+        transform: translateY(-2px);
+        color: var(--primary);
+      }
+      .grid-cell.empty {
+        background: transparent;
+        border: 1px dashed #d1d5db;
+        box-shadow: none;
+        color: #9ca3af;
+        cursor: default;
+      }
+      .content-area {
+        flex: 1;
+        width: 0;
+        min-width: 0;
+        background: var(--bg-card);
+        border-radius: 16px;
+        padding: 40px 50px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+        border: 1px solid var(--border-color);
+        overflow-x: hidden;
+      }
+      .cell-section {
+        margin-bottom: 50px;
+      }
+      .cell-section:last-child {
+        margin-bottom: 0px;
+      }
+      .section-header {
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border-color);
+      }
+      .section-title {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--text-main);
+      }
+      .markdown-body {
+        font-size: 16px;
+        color: #374151;
+      }
+      .markdown-body p { margin-top: 0; margin-bottom: 16px; }
+      .markdown-body a { color: var(--primary); text-decoration: none; }
+      .markdown-body a:hover { text-decoration: underline; }
+      .markdown-body ul, .markdown-body ol { margin-top: 0; padding-left: 24px; }
+      .markdown-body li { margin-bottom: 8px; }
+      .markdown-body blockquote {
+        margin: 0 0 16px 0;
+        padding: 12px 20px;
+        background: #f3f4f6;
+        border-left: 4px solid #9ca3af;
+        border-radius: 0 8px 8px 0;
+      }
+      .markdown-body pre {
+        background: #1f2937;
+        color: #f9fafb;
+        padding: 16px;
+        border-radius: 8px;
+        overflow-x: auto;
+      }
+      .markdown-body code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        background: #f3f4f6;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.9em;
+        color: #ef4444;
+      }
+      .markdown-body pre code {
+        background: transparent;
+        padding: 0;
+        color: inherit;
+      }
+      .markdown-body img { max-width: 100%; border-radius: 8px; border: 1px solid var(--border-color); }
+      
+      /* Outliner Export Styles */
+      .outliner-export-container {
+        font-size: 16px;
+        color: #374151;
+      }
+      .outliner-export-node {
+        display: flex;
+        align-items: flex-start;
+        margin-bottom: 8px;
+        line-height: 1.6;
+      }
+      .outliner-export-bullet {
+        margin-right: 12px;
+        color: #9ca3af;
+        font-size: 18px;
+        line-height: 1.4;
+        user-select: none;
+      }
+      .outliner-export-text {
+        flex: 1;
+        word-wrap: break-word;
+        word-break: break-all;
+      }
+
+      @media (max-width: 768px) {
+        .layout-container { flex-direction: column; align-items: stretch; }
+        .sidebar { position: static; width: 100%; max-width: 500px; margin: 0 auto 40px; }
+        .content-area { padding: 30px; }
+      }
+    `;
+
+    const htmlWrapper = document.createElement('div');
+    htmlWrapper.className = 'layout-container';
+
+    // 左侧：Sidebar
+    const sidebar = document.createElement('div');
+    sidebar.className = 'sidebar';
+
+    // 主标题置于左栏顶部
+    const title = document.createElement('h1');
+    title.className = 'main-title';
+    title.textContent = this.data.name;
+    sidebar.appendChild(title);
+
+    const gridEl = document.createElement('div');
+    gridEl.className = 'grid-3x3';
+
+    for (let i = 0; i < 9; i++) {
+      const cell = this.data.cells[i];
+      let cellEl;
+
+      if (cell && (cell.name || cell.content)) {
+        cellEl = document.createElement('a');
+        cellEl.href = `#section-${i}`;
+        cellEl.className = 'grid-cell has-content';
+        const span = document.createElement('span');
+        span.className = 'grid-cell-text';
+        span.textContent = cell.name || `格子 ${i + 1}`;
+        cellEl.appendChild(span);
+      } else {
+        cellEl = document.createElement('div');
+        cellEl.className = 'grid-cell empty';
+      }
+
+      gridEl.appendChild(cellEl);
+    }
+    sidebar.appendChild(gridEl);
+    htmlWrapper.appendChild(sidebar);
+
+    // 右侧：Main Content
+    const contentArea = document.createElement('div');
+    contentArea.className = 'content-area';
+
+    let hasAnyContent = false;
+    for (let i = 0; i < 9; i++) {
+      const cell = this.data.cells[i];
+      if (cell && (cell.name || cell.content)) {
+        hasAnyContent = true;
+        const section = document.createElement('div');
+        section.className = 'cell-section';
+        section.id = `section-${i}`;
+
+        const header = document.createElement('div');
+        header.className = 'section-header';
+
+        const titleEl = document.createElement('h2');
+        titleEl.className = 'section-title';
+        titleEl.textContent = `${i + 1}. ${cell.name || `格子 ${i + 1}`}`;
+        header.appendChild(titleEl);
+
+        section.appendChild(header);
+
+        if (cell.content) {
+          const contentWrapper = document.createElement('div');
+
+          if (cell.mode === 'query') {
+            contentWrapper.className = 'markdown-body';
+            await MarkdownRenderer.renderMarkdown(cell.content, contentWrapper, this.filePath, this);
+          } else {
+            // 解析大纲节点模式 (Outliner)
+            contentWrapper.className = 'outliner-export-container';
+            const lines = cell.content.split('\n');
+            lines.forEach((line, idx) => {
+              if (line.trim() === '' && lines.length > 1) return;
+
+              const tabMatch = line.match(/^\t+/);
+              const level = tabMatch ? tabMatch[0].length : 0;
+              const text = line.trim();
+
+              const nodeEl = document.createElement('div');
+              nodeEl.className = 'outliner-export-node';
+              nodeEl.style.marginLeft = `${level * 28}px`; // 每一级缩进 28px
+
+              const bullet = document.createElement('span');
+              bullet.className = 'outliner-export-bullet';
+              bullet.innerHTML = '•';
+
+              const textNode = document.createElement('span');
+              textNode.className = 'outliner-export-text';
+              textNode.textContent = text;
+
+              nodeEl.appendChild(bullet);
+              nodeEl.appendChild(textNode);
+              contentWrapper.appendChild(nodeEl);
+            });
+          }
+          section.appendChild(contentWrapper);
+        }
+
+        contentArea.appendChild(section);
+      }
+    }
+
+    if (!hasAnyContent) {
+      const emptyMsg = document.createElement('div');
+      emptyMsg.textContent = '暂无详细内容。';
+      emptyMsg.style.color = '#9ca3af';
+      emptyMsg.style.textAlign = 'center';
+      emptyMsg.style.padding = '40px 0';
+      emptyMsg.style.fontSize = '16px';
+      contentArea.appendChild(emptyMsg);
+    }
+
+    htmlWrapper.appendChild(contentArea);
+
+    const htmlContent = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${this.data.name} - 九宫格</title>
+<style>
+  html { scroll-behavior: smooth; }
+  ${css}
+</style>
+</head>
+<body>
+${htmlWrapper.outerHTML}
+</body>
+</html>`;
+
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${this.data.name}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    new Notice('导出 HTML 成功！');
   }
 
   async _saveData() {
