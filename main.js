@@ -375,6 +375,58 @@ class BlockSyncEngine {
     this._debouncedSave();
   }
 
+  // ========== 虚拟文件夹管理 ==========
+
+  getFolders() {
+    if (!this.db) return [];
+    const results = [];
+    const stmt = this.db.prepare('SELECT * FROM sudoku_folders ORDER BY pos ASC, created_at ASC');
+    while (stmt.step()) {
+      results.push(stmt.getAsObject());
+    }
+    stmt.free();
+    return results;
+  }
+
+  createFolder(name) {
+    if (!this.db) return null;
+    const uuid = generateUUID();
+    const now = Math.floor(Date.now() / 1000);
+    let pos = 0;
+    const stmt = this.db.prepare('SELECT MAX(pos) as maxPos FROM sudoku_folders');
+    if (stmt.step()) {
+      pos = (stmt.getAsObject().maxPos || 0) + 1;
+    }
+    stmt.free();
+    this.db.run('INSERT INTO sudoku_folders (uuid, name, pos, created_at) VALUES (?, ?, ?, ?)', [uuid, name, pos, now]);
+    this._debouncedSave();
+    return uuid;
+  }
+
+  deleteFolder(uuid) {
+    if (!this.db) return;
+    // sudokus 表设置了 ON DELETE SET NULL，所以属于该文件夹的项会被自动移出
+    this.db.run('DELETE FROM sudoku_folders WHERE uuid = ?', [uuid]);
+    this._debouncedSave();
+  }
+
+  renameFolder(uuid, newName) {
+    if (!this.db) return;
+    try {
+      this.db.run('UPDATE sudoku_folders SET name = ? WHERE uuid = ?', [newName, uuid]);
+      this._debouncedSave();
+    } catch (e) {
+      console.error('Rename folder failed (maybe name already exists):', e);
+      throw e;
+    }
+  }
+
+  moveToFolder(sudoku_uuid, folder_uuid) {
+    if (!this.db) return;
+    this.db.run('UPDATE sudokus SET folder_uuid = ? WHERE uuid = ?', [folder_uuid, sudoku_uuid]);
+    this._debouncedSave();
+  }
+
   async syncFile(file) {
     if (!(file instanceof TFile) || file.extension !== 'md') return;
     try {
@@ -1546,11 +1598,34 @@ class SudokuDeleteConfirmModal extends Modal {
   }
 }
 
+class SudokuFolderDeleteConfirmModal extends Modal {
+  constructor(app, folderName, onConfirm) {
+    super(app);
+    this.folderName = folderName;
+    this.onConfirm = onConfirm;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.createEl('h3', { text: '确认删除文件夹' });
+    contentEl.createEl('p', { text: `确定要删除文件夹 "${this.folderName}" 吗？其中的九宫格将被移到"未分类"` });
+
+    const btnBar = contentEl.createDiv({ cls: 'supertag-editor-btn-bar' });
+    const confirmBtn = btnBar.createEl('button', { text: '删除', cls: 'mod-warning' });
+    confirmBtn.onclick = () => {
+      this.onConfirm();
+      this.close();
+    };
+    btnBar.createEl('button', { text: '取消' }).onclick = () => this.close();
+  }
+}
+
 class SudokuMgmtView extends ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
     this.viewMode = 'grid'; // 'grid' or 'list'
+    this.currentFolderId = null;
   }
 
   getViewType() { return SUDOKU_MGMT_VIEW_TYPE; }
@@ -1603,6 +1678,10 @@ class SudokuMgmtView extends ItemView {
     setIcon(listBtn, 'list');
     listBtn.onclick = () => { this.viewMode = 'list'; this._render(); };
 
+    const createFolderBtn = rightHeader.createEl('button', { cls: 'sudoku-action-btn', attr: { 'aria-label': '新建文件夹' } });
+    setIcon(createFolderBtn, 'folder-plus');
+    createFolderBtn.onclick = () => this._createFolder();
+
     const createBtn = rightHeader.createEl('button', { cls: 'sudoku-create-btn mod-cta' });
     setIcon(createBtn.createDiv({ cls: 'sudoku-create-icon' }), 'plus');
     createBtn.createEl('span', { text: '新建' });
@@ -1629,14 +1708,12 @@ class SudokuMgmtView extends ItemView {
 
   async _renderItems(filterValue = '') {
     const { contentEl } = this;
-    contentEl.findAll('.sudoku-container').forEach(el => el.remove());
+    contentEl.findAll('.sudoku-mgmt-body').forEach(el => el.remove());
 
-    const listContainer = contentEl.createDiv({
-      cls: `sudoku-container ${this.viewMode === 'grid' ? 'grid-view' : 'list-view'}`
-    });
+    const bodyContainer = contentEl.createDiv({ cls: 'sudoku-mgmt-body' });
 
     if (!this.plugin._syncEngine) {
-      const loading = listContainer.createDiv({ cls: 'sudoku-empty-container' });
+      const loading = bodyContainer.createDiv({ cls: 'sudoku-empty-container' });
       const spinner = loading.createDiv({ cls: 'sudoku-loading-spinner' });
       setIcon(spinner, 'refresh-cw');
       loading.createEl('p', { text: '正在初始化同步引擎...' });
@@ -1644,38 +1721,162 @@ class SudokuMgmtView extends ItemView {
     }
 
     const sudokuList = this.plugin._syncEngine.getSudokus(filterValue);
+    const folders = this.plugin._syncEngine.getFolders();
 
-    // 如果是主视图渲染，可以在这里更新 header 的统计文字
-    const headerStats = this.contentEl.querySelector('.sudoku-mgmt-stats');
-    if (headerStats) {
-      headerStats.textContent = `${sudokuList.length} 个项目`;
+    // 检查 currentFolderId 是否仍然有效
+    if (this.currentFolderId !== null && !folders.find(f => f.uuid === this.currentFolderId)) {
+      this.currentFolderId = null;
     }
 
-    if (sudokuList.length === 0) {
-      const empty = contentEl.createDiv({ cls: 'sudoku-empty-container' });
-      if (filterValue) {
+    const isGlobalSearch = filterValue.trim().length > 0;
+
+    // 更新统计文字
+    const headerStats = this.contentEl.querySelector('.sudoku-mgmt-stats');
+    if (headerStats) {
+      headerStats.textContent = isGlobalSearch
+        ? `找到 ${sudokuList.length} 个结果`
+        : `${sudokuList.length} 个项目 / ${folders.length} 个目录`;
+    }
+
+    // 面包屑导航栏
+    if (this.currentFolderId !== null && !isGlobalSearch) {
+      const folder = folders.find(f => f.uuid === this.currentFolderId);
+      const breadcrumb = bodyContainer.createDiv({ cls: 'sudoku-breadcrumb' });
+      const backBtn = breadcrumb.createEl('button', { cls: 'sudoku-breadcrumb-btn' });
+      setIcon(backBtn, 'arrow-left');
+      backBtn.createSpan({ text: '返回顶层' });
+
+      const sep = breadcrumb.createSpan({ cls: 'sudoku-breadcrumb-sep', text: '/' });
+      const iconWrap = breadcrumb.createSpan({ cls: 'sudoku-breadcrumb-icon' });
+      setIcon(iconWrap, 'folder');
+      breadcrumb.createSpan({ text: folder ? folder.name : '', cls: 'sudoku-breadcrumb-text' });
+
+      backBtn.onclick = () => {
+        this.currentFolderId = null;
+        this._renderItems(filterValue);
+      };
+
+      // 允许拖拽九宫格到面包屑以返回根目录
+      breadcrumb.addEventListener('dragover', (e) => { e.preventDefault(); breadcrumb.addClass('drag-over'); });
+      breadcrumb.addEventListener('dragleave', () => breadcrumb.removeClass('drag-over'));
+      breadcrumb.addEventListener('drop', (e) => {
+        e.preventDefault();
+        breadcrumb.removeClass('drag-over');
+        const sudokuUuid = e.dataTransfer.getData('text/plain');
+        if (sudokuUuid) {
+          this.plugin._syncEngine.moveToFolder(sudokuUuid, null);
+          this._renderItems(filterValue);
+        }
+      });
+    }
+
+    const listContainer = bodyContainer.createDiv({
+      cls: `sudoku-container ${this.viewMode === 'grid' ? 'grid-view' : 'list-view'}`
+    });
+
+    let itemsToRender = [];
+    let foldersToRender = [];
+
+    if (isGlobalSearch) {
+      itemsToRender = sudokuList;
+    } else {
+      if (this.currentFolderId === null) {
+        foldersToRender = folders;
+        itemsToRender = sudokuList.filter(s => s.folder_uuid === null);
+      } else {
+        itemsToRender = sudokuList.filter(s => s.folder_uuid === this.currentFolderId);
+      }
+    }
+
+    if (itemsToRender.length === 0 && foldersToRender.length === 0) {
+      const empty = listContainer.createDiv({ cls: 'sudoku-empty-container' });
+      if (isGlobalSearch) {
         setIcon(empty.createDiv(), 'search-x');
         empty.createEl('p', { text: '没有找到匹配的九宫格。' });
       } else {
-        setIcon(empty.createDiv(), 'layout-grid');
-        empty.createEl('p', { text: '暂无九宫格数据，点击上方按钮新建一个开始吧。' });
+        setIcon(empty.createDiv(), 'folder-open');
+        empty.createEl('p', { text: '这里空空如也，点击右上角新建吧。' });
       }
       return;
     }
 
+    // 渲染文件夹卡片
+    for (const folder of foldersToRender) {
+      const folderCard = listContainer.createDiv({
+        cls: `sudoku-item folder-card ${this.viewMode === 'grid' ? 'grid-style' : 'list-style'}`
+      });
+
+      folderCard.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        folderCard.addClass('drag-over');
+      });
+      folderCard.addEventListener('dragleave', () => {
+        folderCard.removeClass('drag-over');
+      });
+      folderCard.addEventListener('drop', (e) => {
+        e.preventDefault();
+        folderCard.removeClass('drag-over');
+        const sudokuUuid = e.dataTransfer.getData('text/plain');
+        if (sudokuUuid) {
+          this.plugin._syncEngine.moveToFolder(sudokuUuid, folder.uuid);
+          this._renderItems(filterValue);
+        }
+      });
+
+      const preview = folderCard.createDiv({ cls: 'sudoku-item-preview folder-preview' });
+      setIcon(preview, 'folder');
+
+      const info = folderCard.createDiv({ cls: 'sudoku-item-info' });
+      info.createDiv({ text: folder.name, cls: 'sudoku-item-name' });
+
+      const itemCount = sudokuList.filter(s => s.folder_uuid === folder.uuid).length;
+      const meta = info.createDiv({ cls: 'sudoku-item-meta' });
+      meta.createEl('span', { text: `${itemCount} 个项目`, cls: 'sudoku-item-date' });
+
+      const actions = folderCard.createDiv({ cls: 'sudoku-item-actions' });
+      const renameBtn = actions.createEl('button', { cls: 'sudoku-action-btn', attr: { 'aria-label': '改名' } });
+      setIcon(renameBtn, 'pencil');
+      renameBtn.onclick = (e) => { e.stopPropagation(); this._renameFolder(folder.uuid, folder.name); };
+
+      const deleteBtn = actions.createEl('button', { cls: 'sudoku-action-btn del', attr: { 'aria-label': '删除' } });
+      setIcon(deleteBtn, 'trash-2');
+      deleteBtn.onclick = (e) => { e.stopPropagation(); this._deleteFolder(folder.uuid, folder.name); };
+
+      folderCard.onclick = () => {
+        this.currentFolderId = folder.uuid;
+        this.searchInputValue = '';
+        if (this.contentEl.querySelector('.sudoku-search-input')) {
+          this.contentEl.querySelector('.sudoku-search-input').value = '';
+        }
+        this._renderItems();
+      };
+    }
+
+    // 渲染九宫格项目
     const jgFolder = `${this.plugin.manifest.dir}/.jg`;
-    for (const sudoku of sudokuList) {
+    for (const sudoku of itemsToRender) {
       const fileName = `${sudoku.uuid}.jg`;
       const filePath = `${jgFolder}/${fileName}`;
       try {
         const content = await this.app.vault.adapter.read(filePath);
-        const data = JSON.parse(content);
-
+        const parsed = JSON.parse(content);
+        let itemEl;
         if (this.viewMode === 'grid') {
-          this._renderGridItem(listContainer, data, filePath, fileName, sudoku);
+          itemEl = this._renderGridItem(listContainer, parsed, filePath, fileName, sudoku);
         } else {
-          this._renderListItem(listContainer, data, filePath, fileName, sudoku);
+          itemEl = this._renderListItem(listContainer, parsed, filePath, fileName, sudoku);
         }
+
+        itemEl.setAttribute('draggable', 'true');
+        itemEl.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('text/plain', sudoku.uuid);
+          e.dataTransfer.effectAllowed = 'move';
+          itemEl.style.opacity = '0.4';
+        });
+        itemEl.addEventListener('dragend', () => {
+          itemEl.style.opacity = '1';
+        });
+
       } catch (e) {
         console.error('Failed to render sudoku item:', sudoku.uuid, e);
       }
@@ -1740,6 +1941,7 @@ class SudokuMgmtView extends ItemView {
     deleteBtn.onclick = (e) => { e.stopPropagation(); this._delete(filePath, data.name); };
 
     item.onclick = () => this.plugin.openSudokuView(filePath);
+    return item;
   }
 
   _renderListItem(container, data, filePath, fileName, sudoku = null) {
@@ -1789,6 +1991,34 @@ class SudokuMgmtView extends ItemView {
     deleteBtn.onclick = (e) => { e.stopPropagation(); this._delete(filePath, data.name); };
 
     item.onclick = () => this.plugin.openSudokuView(filePath);
+    return item;
+  }
+
+  _createFolder() {
+    new SudokuInputDialog(this.app, '新建文件夹', '', (name) => {
+      if (!name) return;
+      this.plugin._syncEngine.createFolder(name);
+      this._render();
+    }).open();
+  }
+
+  _renameFolder(uuid, oldName) {
+    new SudokuInputDialog(this.app, '重命名文件夹', oldName, (newName) => {
+      if (!newName || newName === oldName) return;
+      try {
+        this.plugin._syncEngine.renameFolder(uuid, newName);
+        this._render();
+      } catch (e) {
+        new Notice('重命名失败，名称可能已存在');
+      }
+    }).open();
+  }
+
+  _deleteFolder(uuid, name) {
+    new SudokuFolderDeleteConfirmModal(this.app, name, () => {
+      this.plugin._syncEngine.deleteFolder(uuid);
+      this._render();
+    }).open();
   }
 
   async _createNew() {

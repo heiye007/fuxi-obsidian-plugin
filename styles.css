@@ -987,15 +987,110 @@
 }
 
 /* 容器布局 */
-.sudoku-container {
-  padding: 40px;
+.sudoku-mgmt-body {
   flex: 1;
   overflow-y: auto;
+  padding: 40px;
+}
+
+/* 虚拟文件夹模块及卡片样式 */
+.sudoku-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 0 24px 0;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.sudoku-breadcrumb-btn {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  background: var(--background-primary) !important;
+  padding: 6px 16px !important;
+  border-radius: 8px !important;
+  font-weight: 600;
+  border: 1px solid var(--background-modifier-border) !important;
+  transition: all 0.2s;
+}
+
+.sudoku-breadcrumb-btn:hover,
+.sudoku-breadcrumb-btn.drag-over {
+  background: var(--interactive-accent) !important;
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent) !important;
+}
+
+.sudoku-breadcrumb-sep {
+  color: var(--text-faint);
+  font-weight: 300;
+  font-size: 1.2em;
+}
+
+.sudoku-breadcrumb-icon {
+  color: var(--text-muted);
+  display: flex;
+}
+
+.sudoku-breadcrumb-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.sudoku-breadcrumb-text {
+  font-size: 1.2em;
+  font-weight: 700;
+  color: var(--text-normal);
+}
+
+.folder-card {
+  border: 1px solid var(--background-modifier-border) !important;
+}
+
+.folder-card.drag-over {
+  border: 2px dashed var(--interactive-accent) !important;
+  background: rgba(var(--interactive-accent-rgb), 0.05) !important;
+}
+
+.folder-preview {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  background: var(--background-secondary-alt) !important;
+  border-bottom: 1px solid var(--background-modifier-border);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.folder-preview svg {
+  width: 72px !important;
+  height: 72px !important;
+  stroke-width: 1.5px !important;
+  color: var(--interactive-accent);
+  opacity: 0.8;
+  filter: drop-shadow(0 4px 8px rgba(var(--interactive-accent-rgb), 0.15));
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.folder-card:hover .folder-preview {
+  background: var(--background-modifier-hover) !important;
+}
+
+.folder-card:hover .folder-preview svg {
+  transform: translateY(-4px) scale(1.05);
+  opacity: 1;
+  filter: drop-shadow(0 8px 16px rgba(var(--interactive-accent-rgb), 0.3));
+}
+
+.sudoku-container {
+  width: 100%;
 }
 
 .sudoku-container.grid-view {
   display: grid !important;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important;
+  grid-auto-rows: max-content !important;
+  align-content: start !important;
   gap: 24px !important;
 }
 
@@ -1237,6 +1332,7 @@ pocket-watch:before {
   opacity: 0;
   transform: translateY(-5px);
   transition: all 0.2s ease;
+  z-index: 10;
 }
 
 .sudoku-item.grid-style:hover .sudoku-item-actions {
