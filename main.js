@@ -1773,7 +1773,7 @@ class SudokuTagModal extends Modal {
       if (val && !this.tags.includes(val)) {
         this.tags.push(val);
         input.value = '';
-        this.onSave(this.tags);
+        // 不再即时触发 onSave，避免背景重绘导致跳动
         this.renderTags(tagList);
         hideSuggestions();
       }
@@ -1898,10 +1898,14 @@ class SudokuTagModal extends Modal {
       removeBtn.onclick = (e) => {
         e.stopPropagation();
         this.tags.splice(index, 1);
-        this.onSave(this.tags);
         this.renderTags(container);
       };
     });
+  }
+
+  onClose() {
+    this.onSave(this.tags);
+    super.onClose();
   }
 }
 
@@ -2185,9 +2189,17 @@ class SudokuMgmtView extends ItemView {
 
   async _render() {
     const { contentEl } = this;
-    contentEl.empty();
 
-    const header = contentEl.createDiv({ cls: 'sudoku-mgmt-header' });
+    // 核心修复：不要直接 empty()，否则会导致整个视图高度塌陷和滚动条丢失
+    let header = contentEl.querySelector('.sudoku-mgmt-header');
+    if (header) {
+      // 如果已经初始化过，只触发局部更新
+      const searchInput = contentEl.querySelector('.sudoku-search-input');
+      return this._renderItems(searchInput ? searchInput.value.toLowerCase() : '');
+    }
+
+    contentEl.empty();
+    header = contentEl.createDiv({ cls: 'sudoku-mgmt-header' });
 
     // 左侧：标题和统计信息
     const leftHeader = header.createDiv({ cls: 'sudoku-mgmt-header-left' });
@@ -2344,9 +2356,19 @@ class SudokuMgmtView extends ItemView {
 
   async _renderItems(filterValue = '') {
     const { contentEl } = this;
-    contentEl.findAll('.sudoku-mgmt-body').forEach(el => el.remove());
 
-    const bodyContainer = contentEl.createDiv({ cls: 'sudoku-mgmt-body' });
+    // 深度分析修复：真正滚动的不是 contentEl，而是 .sudoku-mgmt-body
+    const oldBody = contentEl.querySelector('.sudoku-mgmt-body');
+    const savedScrollTop = oldBody ? oldBody.scrollTop : 0;
+
+    // 使用“双缓冲”：先创建容器但不立即挂载
+    const bodyContainer = document.createElement('div');
+    bodyContainer.className = 'sudoku-mgmt-body';
+
+    // 如果有旧高度，暂时锁定新容器的最小高度，防止渲染瞬间塌陷
+    if (oldBody) {
+      bodyContainer.style.minHeight = `${oldBody.scrollHeight}px`;
+    }
 
     if (!this.plugin._syncEngine) {
       const loading = bodyContainer.createDiv({ cls: 'sudoku-empty-container' });
@@ -2705,6 +2727,19 @@ class SudokuMgmtView extends ItemView {
         console.error('Failed to render sudoku item:', sudoku.uuid, e);
       }
     }
+
+    // 执行“原子级”替换：在同一渲染帧内完成删除、添加和滚动还原
+    if (oldBody) {
+      oldBody.replaceWith(bodyContainer);
+    } else {
+      contentEl.appendChild(bodyContainer);
+    }
+
+    // 立即同步还原滚动位置到新的滚动容器
+    bodyContainer.scrollTop = savedScrollTop;
+
+    // 释放高度锁定
+    bodyContainer.style.minHeight = '';
   }
 
   _renderGridItem(container, data, filePath, fileName, sudoku = null, tags = []) {
@@ -3383,7 +3418,8 @@ class SudokuMgmtView extends ItemView {
   }
 
   async refresh() {
-    await this._render();
+    const searchInput = this.contentEl.querySelector('.sudoku-search-input');
+    await this._renderItems(searchInput ? searchInput.value.toLowerCase() : '');
   }
 
   onClose() {
@@ -3406,6 +3442,8 @@ class SudokuGridView extends ItemView {
     this._saveInProgress = false;
     this._savePromise = Promise.resolve();
     this.nodes = [];
+    this._history = [];
+    this._historyIndex = -1;
     this._collapsedIndices = new Set(); // 记录折叠的节点索引
     this.addAction('download', '导出为 HTML', () => { this._exportToHtml(); });
   }
@@ -3501,6 +3539,13 @@ class SudokuGridView extends ItemView {
     exportBtn.onclick = () => this._exportToHtml();
 
     this._renderSidebar(this.sidebarEl);
+
+    // 核心交互：点击侧边栏背景直接退出详情编辑模式
+    this.sidebarEl.addEventListener('mousedown', (e) => {
+      if (this.isEditing && e.target === this.sidebarEl) {
+        this._exitEditMode();
+      }
+    });
 
     // 分割线（仅电脑端显示移动效果）
     const resizer = layout.createDiv({ cls: 'sudoku-viewer-resizer' });
@@ -3612,6 +3657,9 @@ class SudokuGridView extends ItemView {
     if (!this.data || !this.titleInput) return;
 
     const cell = this.data.cells[this.selectedCellIndex];
+    const oldName = cell.name;
+    const oldContent = cell.content;
+
     cell.name = this.titleInput.value.trim();
 
     // 从节点列表反向序列化回字符串内容
@@ -3621,9 +3669,54 @@ class SudokuGridView extends ItemView {
       cell.collapsed = Array.from(this._collapsedIndices);
     }
 
-    this._isDirty = true;
-    console.log(`[Sudoku] Syncing to memory...`);
-    await this._enqueueSave();
+    if (cell.name !== oldName || cell.content !== oldContent) {
+      this._isDirty = true;
+      console.log(`[Sudoku] Syncing to memory...`);
+      await this._enqueueSave();
+    }
+  }
+
+  _pushHistory() {
+    if (!this.data) return;
+    const cell = this.data.cells[this.selectedCellIndex];
+    const state = {
+      name: this.titleInput.value,
+      nodes: JSON.parse(JSON.stringify(this.nodes)),
+      collapsed: new Set(this._collapsedIndices)
+    };
+
+    // 如果当前状态与历史栈顶一致，不重复推送
+    if (this._historyIndex >= 0) {
+      const top = this._history[this._historyIndex];
+      if (top.name === state.name && JSON.stringify(top.nodes) === JSON.stringify(state.nodes)) return;
+    }
+
+    // 截断重做路径
+    this._history = this._history.slice(0, this._historyIndex + 1);
+    this._history.push(state);
+    if (this._history.length > 50) this._history.shift();
+    else this._historyIndex++;
+  }
+
+  _undo() {
+    if (this._historyIndex <= 0) return;
+    this._historyIndex--;
+    this._applyHistoryState(this._history[this._historyIndex]);
+  }
+
+  _redo() {
+    if (this._historyIndex >= this._history.length - 1) return;
+    this._historyIndex++;
+    this._applyHistoryState(this._history[this._historyIndex]);
+  }
+
+  _applyHistoryState(state) {
+    this.titleInput.value = state.name;
+    this.nodes = JSON.parse(JSON.stringify(state.nodes));
+    this._collapsedIndices = new Set(state.collapsed);
+    this._skipInitialFocus = true;
+    this._renderDetail(this.mainEl);
+    this._saveCurrentEdits();
   }
 
   // 核心落盘逻辑：将所有修改排队串行写入，防止 Windows/iCloud 文件冲突
@@ -3663,6 +3756,14 @@ class SudokuGridView extends ItemView {
 
     // 头部：标题和操作
     const header = container.createDiv({ cls: 'sudoku-detail-header' });
+
+    // 核心交互：点击详情页头部背景退出编辑
+    header.addEventListener('mousedown', (e) => {
+      if (this.isEditing && (e.target === header || e.target.classList.contains('sudoku-detail-header-left') || e.target.classList.contains('sudoku-detail-title'))) {
+        this._exitEditMode();
+      }
+    });
+
     const headerLeft = header.createDiv({ cls: 'sudoku-detail-header-left' });
 
     const backBtn = headerLeft.createDiv({ cls: 'sudoku-detail-back-btn', attr: { 'aria-label': '返回管理面板' } });
@@ -3692,6 +3793,14 @@ class SudokuGridView extends ItemView {
     if (this.isEditing) {
       contentBody.addClass('is-structured-editing');
       const editorScroll = contentBody.createDiv({ cls: 'sudoku-editor-scroll' });
+
+      // 点击背景聚焦最后
+      editorScroll.onclick = (e) => {
+        if (e.target === editorScroll) {
+          const inputs = this.nodesContainer.querySelectorAll('.node-input');
+          if (inputs.length > 0) inputs[inputs.length - 1].focus();
+        }
+      };
 
       // 1. 标题节点 (根节点)
       const titleWrap = editorScroll.createDiv({ cls: 'edit-title-node-wrap' });
@@ -3759,33 +3868,75 @@ class SudokuGridView extends ItemView {
       // 渲染所有节点
       this.nodes.forEach((node, idx) => {
         if (!node.isHidden) {
-          this._renderEditableNode(this.nodesContainer, node, idx);
+          const shouldFocus = this._focusTarget?.type === 'node' && this._focusTarget.index === idx;
+          this._renderEditableNode(this.nodesContainer, node, idx, shouldFocus);
         }
       });
 
-      // 统一模糊保存
-      const handleBlur = () => {
+      // 核心退出编辑逻辑
+      this._exitEditMode = async () => {
+        if (!this.isEditing) return;
+        if (this._isDirty) this._pushHistory();
+        await this._saveCurrentEdits();
+        this.isEditing = false;
+        this._renderDetail(container);
+      };
+
+      // 统一失焦模糊保存
+      // 统一失焦模糊保存
+      this._handleEditorBlur = () => {
         if (this._blurTimeout) clearTimeout(this._blurTimeout);
         this._blurTimeout = setTimeout(async () => {
+          if (!this.isEditing) return;
+
           const active = document.activeElement;
-          // 判定焦点是否逸出编辑器
-          const isInternal = active && (active.hasClass('node-input') || active === this.titleInput || this.nodesContainer.contains(active));
-          if (isInternal) return;
 
-          if (this.isEditing) {
-            await this._saveCurrentEdits();
-            this.isEditing = false;
-            this._renderDetail(container);
+          // 判定焦点是否仍在编辑器内的输入框上
+          const isInputFocused = active && (active.classList.contains('node-input') || active.classList.contains('edit-title-input'));
+
+          // 判定鼠标是否在侧边栏或主头部（属于“外部”）
+          const isMouseInSidebar = this.sidebarEl && this.sidebarEl.matches(':hover');
+          const isMouseInHeader = this.mainEl?.querySelector('.sudoku-detail-header')?.matches(':hover');
+
+          if (isInputFocused) return;
+
+          // 如果焦点离开了输入框，且鼠标在外部区域，或者根本不在整个 Obsidian 窗口内
+          if (isMouseInSidebar || isMouseInHeader || !document.hasFocus()) {
+            await this._exitEditMode();
           }
-        }, 200);
+        }, 100);
       };
-      this.titleInput.onblur = handleBlur;
 
-      // 仅在首次进入或手动通过双击进入时聚焦标题
-      if (!this._skipInitialFocus) {
+      this.titleInput.onblur = this._handleEditorBlur;
+      this.titleInput.onkeydown = async (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          await this._exitEditMode();
+        }
+      };
+
+      // 处理初始化或双击后的聚焦逻辑
+      if (this._focusTarget) {
+        if (this._focusTarget.type === 'title') {
+          setTimeout(() => this.titleInput.focus(), 50);
+        } else if (this._focusTarget.type === 'last') {
+          setTimeout(() => {
+            const inputs = this.nodesContainer.querySelectorAll('.node-input');
+            if (inputs.length > 0) {
+              const lastInput = inputs[inputs.length - 1];
+              lastInput.focus();
+              // 确保光标在最后
+              lastInput.setSelectionRange(lastInput.value.length, lastInput.value.length);
+            }
+          }, 100);
+        }
+        // 具体节点的聚焦在 _renderEditableNode 中通过传参处理
+      } else if (!this._skipInitialFocus) {
+        // 默认进入情形（非 dblclick）聚焦标题
         setTimeout(() => this.titleInput.focus(), 50);
       }
-      this._skipInitialFocus = false; // 重置标记
+      this._skipInitialFocus = false;
+      this._focusTarget = null; // 在这里统一清理
 
       this.statusBar = container.createDiv({ cls: 'sudoku-editor-status-bar' });
       this._updateStatus('synced');
@@ -3793,11 +3944,27 @@ class SudokuGridView extends ItemView {
     } else {
       contentBody.addClass('is-clickable');
       contentBody.setAttribute('aria-label', '双击进入编辑模式');
-      contentBody.ondblclick = () => {
+      contentBody.ondblclick = (e) => {
         if (this.isEditing) return;
+
+        // 查找双击的目标：是节点还是标题？
+        const targetNode = e.target.closest('.outliner-node');
+        const targetTitle = e.target.closest('.outliner-title-node');
+
         this.isEditing = true;
         this.nodes = null; // 触发彻底重解析
-        this._skipInitialFocus = false;
+        this._skipInitialFocus = true; // 禁用默认的标题聚焦
+
+        if (targetTitle) {
+          this._focusTarget = { type: 'title' };
+        } else if (targetNode) {
+          const index = parseInt(targetNode.dataset.index);
+          this._focusTarget = { type: 'node', index };
+        } else {
+          // 如果双击的是空白处，默认聚焦到最后一个节点
+          this._focusTarget = { type: 'last' };
+        }
+
         this._renderDetail(container);
       };
 
@@ -3842,7 +4009,7 @@ class SudokuGridView extends ItemView {
               }
               if (isHidden) return;
 
-              const nodeEl = nodesContainer.createDiv({ cls: 'outliner-node' });
+              const nodeEl = nodesContainer.createDiv({ cls: 'outliner-node', attr: { 'data-index': idx } });
               if (level > 0) nodeEl.style.paddingLeft = `${level * 24}px`;
 
               // 判定当前行是否有子节点 (智能跳过空行)
@@ -3918,6 +4085,7 @@ class SudokuGridView extends ItemView {
     if (moveAfter) target++;
 
     this.nodes.splice(target, 0, item);
+    this._pushHistory(); // 移动后记录历史
     this._skipInitialFocus = true;
     this._renderDetail(this.mainEl);
     this._saveCurrentEdits();
@@ -3940,7 +4108,7 @@ class SudokuGridView extends ItemView {
     this.nodesContainer?.querySelectorAll('.node-drop-indicator').forEach(el => el.remove());
   }
 
-  _renderEditableNode(parent, node, index) {
+  _renderEditableNode(parent, node, index, shouldFocus = false) {
     const nodeEl = parent.createDiv({
       cls: 'outliner-editor-node',
       attr: { 'data-level': node.level + 1 }
@@ -4005,7 +4173,8 @@ class SudokuGridView extends ItemView {
       attr: { rows: 1 }
     });
     input.value = node.text || ''; // 显式赋值保障可靠性
-    input.placeholder = '节点内容...';
+    input.placeholder = '内容...';
+
 
     // 动态高度调整
     const adjustHeight = () => {
@@ -4013,6 +4182,17 @@ class SudokuGridView extends ItemView {
       input.style.height = input.scrollHeight + 'px';
     };
     setTimeout(adjustHeight, 0);
+
+    if (shouldFocus) {
+      setTimeout(() => input.focus(), 50);
+    }
+
+    input.onfocus = () => {
+      // 聚焦时如果历史栈为空，初始化当前状态为第一帧
+      if (this._history.length === 0) {
+        this._pushHistory();
+      }
+    };
 
     input.oninput = () => {
       node.text = input.value;
@@ -4028,27 +4208,35 @@ class SudokuGridView extends ItemView {
       this._diskSaveTimeout = setTimeout(() => this._enqueueSave(), 1500);
     };
 
-    input.onblur = () => {
-      if (this._blurTimeout) clearTimeout(this._blurTimeout);
-      this._blurTimeout = setTimeout(async () => {
-        const active = document.activeElement;
-        if (active && (active.hasClass('node-input') || active === this.titleInput)) return;
-        if (this.isEditing) {
-          await this._saveCurrentEdits();
-          this.isEditing = false;
-          this._renderDetail(this.mainEl);
-        }
-      }, 300);
-    };
+    input.onblur = this._handleEditorBlur;
 
     input.onkeydown = async (e) => {
       // 在执行结构操作前，先确保当前输入的文字已同步到内存
       node.text = input.value;
 
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) this._redo();
+        else this._undo();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        e.preventDefault();
+        this._redo();
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        await this._exitEditMode();
+        return;
+      }
+
       if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         const newNode = { text: '', level: node.level };
         this.nodes.splice(index + 1, 0, newNode);
+        this._pushHistory();
         this._skipInitialFocus = true;
         this._renderDetail(this.mainEl);
         setTimeout(() => {
@@ -4058,6 +4246,7 @@ class SudokuGridView extends ItemView {
       } else if (e.key === 'Backspace' && input.value === '' && this.nodes.length > 1) {
         e.preventDefault();
         this.nodes.splice(index, 1);
+        this._pushHistory();
         this._skipInitialFocus = true;
         this._renderDetail(this.mainEl);
         setTimeout(() => {
@@ -4067,11 +4256,13 @@ class SudokuGridView extends ItemView {
         }, 10);
       } else if (e.key === 'Tab') {
         e.preventDefault();
+        const oldLevel = node.level;
         if (e.shiftKey) {
           if (node.level > 0) node.level--;
         } else {
           if (node.level < 8) node.level++;
         }
+        if (node.level !== oldLevel) this._pushHistory();
         this._skipInitialFocus = true;
         this._renderDetail(this.mainEl);
         setTimeout(() => {

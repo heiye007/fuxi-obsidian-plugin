@@ -1754,14 +1754,13 @@ body.sudoku-is-resizing .sudoku-viewer-main {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
-  gap: 6px;
-  /* 间距改为固定像素，防止缩小时塌陷 */
+  gap: 12px;
+  /* 增大间距，解决堆叠感 */
   width: 100%;
   max-width: 100%;
-  /* 防止溢出侧边栏 */
-  /* 保护九宫格不要大到失控 */
   aspect-ratio: 1 / 1;
-  padding: 8px;
+  padding: 12px;
+  /* 增加内边距 */
   background: var(--background-primary-alt);
   border-radius: 12px;
   border: 1px solid var(--background-modifier-border);
@@ -1770,8 +1769,6 @@ body.sudoku-is-resizing .sudoku-viewer-main {
   flex-shrink: 0;
   margin: 16px 0;
   min-width: 0;
-  /* 增加上下间距 */
-  /* 在侧边栏纵向居中 */
 }
 
 .sudoku-viewer-grid:hover {
@@ -1786,28 +1783,27 @@ body.sudoku-is-resizing .sudoku-viewer-main {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s ease;
   position: relative;
   overflow: hidden;
   aspect-ratio: 1 / 1;
-  /* 强制格子永远是正方形 */
   min-width: 0;
-  /* 允许在窄屏下无限缩小 */
+  box-sizing: border-box;
+  /* 确保边框不溢出 */
 }
 
 .sudoku-viewer-cell:hover {
   border-color: var(--interactive-accent);
   background: var(--background-modifier-hover);
-  transform: scale(1.05);
 }
 
 .sudoku-viewer-cell.is-selected {
-  border-color: var(--interactive-accent);
+  border: 2px solid var(--interactive-accent);
+  /* 变粗边框代替缩放 */
   background: var(--background-primary);
-  box-shadow: 0 0 0 3px rgba(var(--interactive-accent-rgb), 0.2),
-    0 8px 16px -4px rgba(0, 0, 0, 0.1);
-  transform: scale(1.1);
-  z-index: 5;
+  box-shadow: 0 0 0 4px rgba(var(--interactive-accent-rgb), 0.1),
+    var(--shadow-s);
+  z-index: 2;
 }
 
 .sudoku-viewer-cell.has-content::after {
@@ -1994,9 +1990,12 @@ pocket-watch:before {
 
 .sudoku-editor-scroll {
   flex: 1;
-  padding: 0 0 20px 12px;
-  /* 顶部 0，左侧保留 12px 呼吸感 */
+  padding: 0 12px 20px 30px;
+  /* 增加左侧 30px 留白给拖拽手柄 */
   overflow-y: auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 标题节点编辑 */
@@ -2027,7 +2026,9 @@ pocket-watch:before {
   flex-direction: column;
   gap: 2px;
   padding-bottom: 200px;
-  /* 留出底部空间 */
+  width: 100%;
+  flex: 1;
+  /* 确保占据全部空间 */
 }
 
 .outliner-editor-node {
@@ -2035,8 +2036,60 @@ pocket-watch:before {
   align-items: flex-start;
   gap: 8px;
   position: relative;
-  transition: all 0.2s ease;
-  padding: 2px 0;
+  transition: background-color 0.1s ease;
+  padding: 4px 0;
+  border-radius: 4px;
+  width: 100%;
+  /* 关键：确保节点铺满宽度 */
+}
+
+.outliner-editor-node:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.node-drag-handle {
+  position: absolute;
+  left: -24px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.outliner-editor-node:hover .node-drag-handle {
+  opacity: 1;
+}
+
+.node-drag-handle:hover {
+  color: var(--text-normal);
+}
+
+.node-drag-handle:active {
+  cursor: grabbing;
+}
+
+.node-drop-indicator {
+  position: absolute;
+  left: -20px;
+  /* 延伸到手柄区 */
+  right: 0;
+  height: 2px;
+  background-color: var(--interactive-accent);
+  z-index: 100;
+  pointer-events: none;
+  box-shadow: 0 0 8px var(--interactive-accent);
+}
+
+.outliner-editor-node.is-dragging {
+  opacity: 0.4;
+  background-color: var(--background-modifier-hover);
 }
 
 /* 隐藏被父节点折叠的后代 */
@@ -2102,6 +2155,10 @@ pocket-watch:before {
 .node-input-container {
   flex: 1;
   min-width: 0;
+  position: relative;
+  display: block;
+  width: 100%;
+  /* 确保绝对定位的提示以此为基准 */
 }
 
 .node-input {
@@ -2113,14 +2170,15 @@ pocket-watch:before {
   font-size: 1.05em;
   line-height: 1.8;
   color: var(--text-normal);
-  padding: 0 !important;
+  padding: 0 4px 0 0 !important;
+  /* 右侧仅保留 4px 极窄边距 */
   margin: 0 !important;
   resize: none;
   outline: none;
   display: block;
   overflow: hidden;
-  /* 由 JS 动态调整高度 */
 }
+
 
 /* 引导线对齐 */
 .outliner-editor-node::before {
@@ -2180,8 +2238,8 @@ pocket-watch:before {
   display: flex;
   position: relative;
   padding-left: 0;
-  /* 对齐标题点中心并微调 */
   margin-top: 4px;
+  width: 100%;
 }
 
 .edit-content-textarea {
@@ -2206,8 +2264,8 @@ pocket-watch:before {
 
 .sudoku-detail-body {
   flex: 1;
-  padding: 0 0 20px 12px;
-  /* 顶部 0，左侧保留 12px 呼吸感 */
+  padding: 0 12px 20px 12px;
+  /* 左右对称 12px 边距，与编辑模式保持一致 */
   overflow-y: auto;
   position: relative;
 }
@@ -2781,10 +2839,9 @@ pocket-watch:before {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 10px 0 300px 0;
-  /* 底部预留大量空间给匹配项弹窗 */
-  min-height: 450px;
-  /* 保证弹窗有足够初始高度 */
+  padding: 10px 0 20px 0;
+  min-height: 250px;
+  /* 降低最小高度，由内容自然撑开 */
 }
 
 .sudoku-tag-editor-list {
