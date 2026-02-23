@@ -48,7 +48,7 @@
 | 欢迎进入微信群交流反馈 | 您的支持是我持续更新的动力 |
 
 **作者**: Heiye  
-**版本**: 0.3.0
+**版本**: 0.4
 
 ---
 
@@ -98,5 +98,5 @@ Fuxi maintains a real-time mapping of your data in `fuxi.db` located in the plug
 ---
 
 **Author**: Heiye  
-**Version**: 0.3.0
+**Version**: 0.4
 
