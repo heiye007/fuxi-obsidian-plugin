@@ -1300,15 +1300,59 @@
   font-size: 9px;
   line-height: 1.2;
   color: var(--text-normal);
-  padding: 2px;
-  text-align: left;
-  word-break: break-all;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
-  -webkit-box-orient: vertical;
+  padding: 0 1px;
+  text-align: center !important;
+  width: 100%;
+  height: 100%;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  word-break: break-word;
+  /* 优先居中，必要时换行 */
   overflow: hidden;
-  opacity: 0.8;
+  opacity: 0.9;
+}
+
+/* 曼陀罗核心预览强化 */
+.sudoku-preview-cell.is-preview-core {
+  border: 1.2px solid var(--interactive-accent) !important;
+  background: rgba(var(--interactive-accent-rgb), 0.05);
+  box-shadow: 0 0 2px rgba(var(--interactive-accent-rgb), 0.3);
+  z-index: 2;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.sudoku-preview-cell.is-preview-core .sudoku-preview-text {
+  font-size: 7px;
+  font-weight: 600;
+  color: var(--interactive-accent);
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+}
+
+/* 81 宫格预览极致缩放 */
+.is-81-preview .sudoku-preview-text {
+  font-size: 4px;
+  /* 极小字号，用于展现整体纹理和基本轮廓 */
+  line-height: 1;
+  padding: 0;
+  opacity: 0.7;
+}
+
+.is-81-preview .sudoku-preview-cell.is-preview-core .sudoku-preview-text {
+  font-size: 6px;
+  /* 核心岛屿稍微大一点点以示区分 */
+  font-weight: 800;
+  opacity: 1;
+}
+
+.is-81-preview .sudoku-preview-cell {
+  border-radius: 2px;
+  /* 81 宫格由于格子太小，圆角也要调小 */
 }
 
 .sudoku-preview-cell.is-query {
@@ -1650,21 +1694,19 @@ pocket-watch:before {
 
 /* 侧边栏导航 */
 .sudoku-viewer-sidebar {
-  padding: 16px 12px !important;
-  /* 缩小边距，为窄屏腾出空间 */
+  padding: 12px !important;
   background: var(--background-secondary-alt);
   display: flex !important;
   flex-direction: column !important;
   align-items: center !important;
-  justify-content: flex-start !important;
-  /* 改为从顶部开始对齐，防止被裁切 */
+  /* 水平居中 */
+  justify-content: center !important;
+  /* 垂直居中 */
   box-shadow: inset -1px 0 0 var(--background-modifier-border);
-  overflow-y: auto;
-  /* 允许纵向滚动防止垂直裁切 */
-  overflow-x: hidden;
+  overflow: auto !important;
+  /* 允许滚动，防止内容溢出被隐藏 */
   height: 100%;
   min-width: 0;
-  /* flex 缩小关键 */
   box-sizing: border-box !important;
 }
 
@@ -1751,34 +1793,165 @@ body.sudoku-is-resizing .sudoku-viewer-main {
 }
 
 .sudoku-viewer-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, 1fr);
+  display: grid !important;
+  /* 强制行列完全相等，不留任何形变余地 */
+  grid-template-columns: repeat(var(--grid-cols, 3), 1fr) !important;
+  grid-template-rows: repeat(var(--grid-cols, 3), 1fr) !important;
   gap: 12px;
-  /* 增大间距，解决堆叠感 */
-  width: 100%;
-  max-width: 100%;
-  aspect-ratio: 1 / 1;
+
+  /* 极致布局：自适应宽高，确保始终是正方形且居中 */
+  /* 通过设置超大宽值配合 max-width/height，锁定为容器内最大的正方形 */
+  width: 1200px !important;
+  height: auto !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  aspect-ratio: 1 / 1 !important;
+
+  /* 关键：彻底脱离 flex 容器的自动拉伸干扰 */
+  flex: 0 0 auto !important;
+  margin: auto !important;
+
   padding: 12px;
-  /* 增加内边距 */
   background: var(--background-primary-alt);
   border-radius: 12px;
   border: 1px solid var(--background-modifier-border);
   box-shadow: var(--shadow-s);
   box-sizing: border-box !important;
-  flex-shrink: 0;
-  margin: 16px 0;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .sudoku-viewer-grid:hover {
   border-color: var(--interactive-accent);
 }
 
+/* 81 宫格：曼陀罗 (Mandalart) 分析模型 */
+.sudoku-viewer-grid.is-81-grid {
+  display: grid !important;
+  /* 9 个独立的 3x3 岛屿 */
+  grid-template-columns: repeat(3, 1fr) !important;
+  grid-template-rows: repeat(3, 1fr) !important;
+  gap: 16px !important;
+  padding: 16px !important;
+  background: var(--background-primary-alt) !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.sudoku-sector {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 0;
+  border: 1.5px solid var(--text-faint);
+  border-radius: 4px;
+  overflow: visible !important;
+  /* 重要：必须允许选中框溢出，否则会被 3x3 边界裁剪 */
+  box-shadow: var(--shadow-s);
+  position: relative;
+  transition: z-index 0.2s;
+}
+
+/* 核心：如果这个象限里有选中的格子，提升整个象限的层级 */
+.sudoku-sector:has(.is-selected) {
+  z-index: 50 !important;
+  border-color: var(--interactive-accent) !important;
+  box-shadow: var(--shadow-l) !important;
+}
+
+/* 曼陀罗色彩逻辑：十字红、对角绿、中心蓝 */
+.sector-center {
+  background-color: #f0f9ff;
+  border-color: #7dd3fc !important;
+}
+
+/* 中心区：浅蓝 */
+.sector-cross {
+  background-color: #fff1f2;
+  border-color: #fda4af !important;
+}
+
+/* 十字区：浅红 */
+.sector-corner {
+  background-color: #f0fdf4;
+  border-color: #86efac !important;
+}
+
+/* 对角区：浅绿 */
+
+.sudoku-viewer-grid.is-81-grid .sudoku-viewer-cell {
+  position: relative;
+  background: transparent;
+  border-right: 0.5px dashed rgba(var(--text-muted-rgb), 0.2);
+  border-bottom: 0.5px dashed rgba(var(--text-muted-rgb), 0.2);
+  border-radius: 0;
+  padding: 4px;
+  overflow: hidden;
+  box-sizing: border-box !important;
+  transition: background 0.2s ease;
+}
+
+.sudoku-viewer-grid.is-81-grid .sudoku-viewer-cell:hover {
+  background: rgba(var(--interactive-accent-rgb), 0.05);
+}
+
+/* 核心格 (Center of each 3x3) 强化 */
+.sudoku-viewer-grid.is-81-grid .sudoku-viewer-cell.is-core {
+  background: rgba(255, 255, 255, 0.5);
+  font-weight: 800 !important;
+}
+
+.sudoku-viewer-grid.is-81-grid .sudoku-viewer-cell.is-core .cell-dot-preview {
+  color: var(--text-accent) !important;
+  font-weight: bold;
+}
+
+/* 选中态增强：采用“透明盾牌+外置轮廓”方案，彻底解决 L 型缺口和不对称问题 */
+.sudoku-viewer-grid.is-81-grid .sudoku-viewer-cell.is-selected {
+  background: var(--background-primary) !important;
+  /* 关键：将原有边框设为透明，消除 2px 实线带来的几何偏移干扰 */
+  border-color: transparent !important;
+
+  /* 使用 outline 渲染，它是图层无关的，渲染优先级最高 */
+  outline: 3px solid var(--interactive-accent) !important;
+  outline-offset: -1.5px !important;
+  /* 微调以覆盖原本的边框区域 */
+
+  z-index: 1000 !important;
+  /* 极高层级，压倒所有邻居 */
+  overflow: visible !important;
+  box-shadow: 0 0 15px rgba(var(--interactive-accent-rgb), 0.15) !important;
+}
+
+/* 彻底移除之前无效的伪元素 */
+.sudoku-viewer-grid.is-81-grid .sudoku-viewer-cell.is-selected::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* 文字预览优化 - 曼陀罗专用细化 */
+.sudoku-viewer-grid.is-81-grid .cell-dot-preview {
+  font-size: 10px;
+  line-height: 1.25;
+  font-weight: 500;
+  color: var(--text-main);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-align: left;
+  user-select: none;
+  pointer-events: none;
+  padding: 1px 2px;
+}
+
+
 .sudoku-viewer-cell {
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
-  border-radius: 12px;
+  border-radius: 8px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1786,8 +1959,11 @@ body.sudoku-is-resizing .sudoku-viewer-main {
   transition: all 0.2s ease;
   position: relative;
   overflow: hidden;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 1 / 1 !important;
+  /* 强制个体单元格保持正方形 */
   min-width: 0;
+  min-height: 0;
+  /* Added min-height to ensure it can shrink */
   box-sizing: border-box;
   /* 确保边框不溢出 */
 }
@@ -2937,6 +3113,73 @@ pocket-watch:before {
 .sudoku-tag-suggestion-item .match {
   font-weight: bold;
   text-decoration: underline;
+}
+
+/* ========== 九宫格创建弹窗 (Creation Modal) ========== */
+.sudoku-creation-container {
+  padding: 10px 0;
+}
+
+.sudoku-creation-label {
+  font-size: 0.9em;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.sudoku-creation-input {
+  width: 100%;
+  font-size: 1.1em !important;
+  padding: 12px !important;
+  border-radius: 8px !important;
+}
+
+.sudoku-size-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.sudoku-size-card {
+  flex: 1;
+  padding: 16px;
+  background: var(--background-secondary);
+  border: 2px solid var(--background-modifier-border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.sudoku-size-card:hover {
+  border-color: var(--interactive-accent);
+  background: var(--background-secondary-alt);
+}
+
+.sudoku-size-card.is-selected {
+  border-color: var(--interactive-accent);
+  background: rgba(var(--interactive-accent-rgb), 0.1);
+  box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+.sudoku-size-card .size-label {
+  font-weight: 700;
+  font-size: 1.1em;
+  margin-bottom: 4px;
+}
+
+.sudoku-size-card .size-desc {
+  font-size: 0.8em;
+  color: var(--text-faint);
+}
+
+.sudoku-creation-btn-bar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid var(--background-modifier-border);
 }
 
 .sudoku-tag-suggestion-empty {
