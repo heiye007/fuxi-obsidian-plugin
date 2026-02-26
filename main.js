@@ -4531,26 +4531,71 @@ class SudokuGridView extends ItemView {
 
       if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        const newNode = { text: '', level: node.level };
+
+        this._pushHistory();
+        const pos = input.selectionStart;
+        const fullText = input.value;
+        const leftText = fullText.substring(0, pos);
+        const rightText = fullText.substring(pos);
+
+        // 更新当前节点为前半部分
+        node.text = leftText;
+
+        // 插入后半部分为新节点
+        const newNode = { text: rightText, level: node.level };
         this.nodes.splice(index + 1, 0, newNode);
-        this._pushHistory();
+
         this._skipInitialFocus = true;
         this._renderDetail(this.mainEl);
+
         setTimeout(() => {
           const allInputs = this.nodesContainer.querySelectorAll('.node-input');
-          allInputs[index + 1]?.focus();
-        }, 10);
-      } else if (e.key === 'Backspace' && input.value === '' && this.nodes.length > 1) {
+          const targetInput = allInputs[index + 1];
+          if (targetInput) {
+            targetInput.focus();
+            targetInput.setSelectionRange(0, 0);
+          }
+        }, 20);
+      } else if (e.key === 'Backspace' && input.selectionStart === 0 && input.selectionEnd === 0) {
+        // 核心交互：在节点最前面点击 Backspace 退到上一个节点（并合并文本）
         e.preventDefault();
-        this.nodes.splice(index, 1);
-        this._pushHistory();
-        this._skipInitialFocus = true;
-        this._renderDetail(this.mainEl);
-        setTimeout(() => {
-          const allInputs = this.nodesContainer.querySelectorAll('.node-input');
-          const prevInput = allInputs[index - 1] || this.titleInput;
-          prevInput.focus();
-        }, 10);
+
+        if (index > 0) {
+          this._pushHistory();
+          const prevNode = this.nodes[index - 1];
+          const mergePoint = prevNode.text.length;
+
+          // 合并文字
+          prevNode.text += node.text;
+          this.nodes.splice(index, 1);
+
+          this._skipInitialFocus = true;
+          this._renderDetail(this.mainEl);
+
+          // 定位光标到合并点
+          setTimeout(() => {
+            const allInputs = this.nodesContainer.querySelectorAll('.node-input');
+            const targetInput = allInputs[index - 1];
+            if (targetInput) {
+              targetInput.focus();
+              targetInput.setSelectionRange(mergePoint, mergePoint);
+            }
+          }, 20);
+        } else {
+          // 第一个节点退回到标题框
+          if (input.value === '' && this.nodes.length > 1) {
+            this._pushHistory();
+            this.nodes.splice(index, 1);
+            this._skipInitialFocus = true;
+            this._renderDetail(this.mainEl);
+          }
+
+          setTimeout(() => {
+            const titleLen = this.titleInput.value.length;
+            this.titleInput.focus();
+            this.titleInput.setSelectionRange(titleLen, titleLen);
+          }, 20);
+        }
       } else if (e.key === 'Tab') {
         e.preventDefault();
         const oldLevel = node.level;
